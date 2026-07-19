@@ -1,0 +1,102 @@
+
+======================================================================
+1. SKEW - phân phối thành phố (customer)
+======================================================================
+       city  actual_pct  config_pct  diff_pct
+Ho Chi Minh       44.90        45.0     -0.10
+     Ha Noi       30.10        30.0      0.10
+    Da Nang       10.05        10.0      0.05
+  Hai Phong        4.10         4.0      0.10
+    Can Tho        3.45         3.5     -0.05
+   Bien Hoa        3.03         3.0      0.03
+  Nha Trang        2.42         2.5     -0.08
+        Hue        1.94         2.0     -0.06
+
+======================================================================
+2. SKEW - phân phối nhóm món (restaurant)
+======================================================================
+         category  actual_pct  config_pct  diff_pct
+              Com       31.01        30.0      1.01
+          Tra sua       24.10        25.0     -0.90
+        Bun - Pho       14.65        15.0     -0.35
+      Do an nhanh       10.17        10.0      0.17
+      Lau - Nuong        7.80         8.0     -0.20
+          Banh mi        6.06         6.0      0.06
+Che - Trang mieng        4.12         4.0      0.13
+          Do chay        2.08         2.0      0.08
+
+======================================================================
+3. SKEW - loại phương tiện (driver)
+======================================================================
+      vehicle_type  actual_pct  config_pct  diff_pct
+     motorbike_gas       78.16        78.0      0.16
+motorbike_electric       20.10        20.0      0.10
+               car        1.74         2.0     -0.26
+
+======================================================================
+4. SKEW - phương thức thanh toán (order)
+======================================================================
+payment_method  actual_pct  config_pct  diff_pct
+          cash       45.04        45.0      0.04
+       ewallet       40.00        40.0     -0.00
+ bank_transfer       14.97        15.0     -0.03
+
+======================================================================
+5. SKEW - giờ đặt đơn (order)
+======================================================================
+ order_time   pct
+         12 10.68
+         13 10.67
+         11 10.64
+         18 10.02
+         20 10.01
+         19 10.00
+          6  3.18
+         21  3.18
+          8  3.17
+         17  3.17
+
+======================================================================
+6. HIGH CARDINALITY - số giá trị phân biệt
+======================================================================
+     table        column  distinct_count  total_rows  ratio cardinality
+     order   customer_id          120000     2550000 0.0471        HIGH
+     order restaurant_id            8000     2550000 0.0031        HIGH
+     order delivery_city               8     2550000 0.0000         LOW
+order_item  menu_item_id           45000     6250053 0.0072        HIGH
+order_item      order_id         2500000     6250053 0.4000        HIGH
+ menu_item      category               8       45000 0.0002         LOW
+
+======================================================================
+7. SCHEMA EVOLUTION - schema thực tế trong file parquet
+======================================================================
+ n_columns  has_spice_level  n_partitions          first_partition           last_partition
+         7            False            90 ingested_date=2026-01-20 ingested_date=2026-04-19
+         8             True            90 ingested_date=2026-04-20 ingested_date=2026-07-18
+
+======================================================================
+8. SCHEMA EVOLUTION - null sau khi hợp nhất schema
+======================================================================
+_source_schema  rows  spice_null  null_pct
+  v1_no_column 20143       20143    100.00
+ v2_has_column 24857        9037     36.36
+
+======================================================================
+9. DUPLICATE - trước và sau khi khử trùng
+======================================================================
+ rows_before_dedup  rows_after_dedup  duplicates_removed  actual_dup_rate_pct  config_dup_rate_pct
+           2550000           2500000               50000                  2.0                  2.0
+
+======================================================================
+10. DEFECT - vi phạm ràng buộc tham chiếu và nhất quán
+======================================================================
+                                      check  violations  actual_pct  config_pct
+              total_amount != SUM(subtotal)        7500         0.3         0.3
+review.restaurant_id != order.restaurant_id        3186         0.5         0.5
+                  đơn huỷ thiếu reason_code           0         0.0         0.0
+
+======================================================================
+11. OUTLIER - đơn số lượng lớn
+======================================================================
+ bulk_rows  bulk_pct_of_items  pct_in_lunch_hours  pct_on_weekday  max_quantity
+     29875              0.478               100.0           100.0            25
