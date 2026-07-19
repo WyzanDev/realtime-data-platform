@@ -243,6 +243,30 @@ Hai dòng `LOW` được giữ lại có chủ ý làm đối chứng. Chính s�
 - `restaurant_id` (8.000 giá trị) — quá nhiều để phân vùng, thích hợp làm khoá bucketing
 - `customer_id` (120.000 giá trị) — nên dùng `approx_count_distinct` thay vì `countDistinct` khi thống kê
 
+**Đếm chính xác so với đếm xấp xỉ.** Bảng 7 của `01_profile_full.txt` đối chiếu trực tiếp hai phương pháp trên cùng các cột:
+
+```
+     table        column  exact_count  approx_count  error_pct  nen_dung
+     order   customer_id       120000        120469      0.391    approx
+     order restaurant_id         8000          7993     -0.088    approx
+     order delivery_city            8             8      0.000     exact
+order_item  menu_item_id        45000         45854      1.898    approx
+order_item      order_id      2500000       2505196      0.208    approx
+ menu_item      category            8             8      0.000     exact
+```
+
+Hàm `countDistinct` phải giữ **toàn bộ** tập giá trị đã gặp trong bộ nhớ để biết giá trị nào đã đếm rồi. Với `order_id` 2,5 triệu giá trị, điều đó nghĩa là khi chạy phân tán, Spark buộc phải chuyển toàn bộ giá trị về cùng một nơi để loại trùng — một phép shuffle rất nặng.
+
+Hàm `approx_count_distinct` dùng thuật toán HyperLogLog. Thay vì nhớ các giá trị, nó băm mỗi giá trị rồi chỉ ghi lại vị trí bit 1 đầu tiên trong phần đuôi mã băm. Giá trị phân biệt càng nhiều thì xác suất bắt gặp mã băm có chuỗi 0 dài càng cao, từ đó suy ngược ra số lượng. Bộ nhớ tiêu tốn cố định ở mức vài kilobyte bất kể dữ liệu lớn cỡ nào, và các executor chỉ cần trao đổi vài kilobyte thanh ghi thay vì hàng triệu giá trị.
+
+Sai số đo được nằm trong khoảng từ −0,088% đến +1,898% với cấu hình 16.384 nhóm. Ngưỡng lý thuyết của cấu hình này là khoảng 0,81%, và HyperLogLog vốn cho sai số dao động quanh ngưỡng đó chứ không bị chặn cứng — cột `menu_item_id` lệch 1,898% nằm trong khoảng dao động bình thường, còn `order_id` với 2,5 triệu giá trị chỉ lệch 0,208%.
+
+Điểm đáng chú ý: độ chính xác **không xấu đi** khi dữ liệu lớn hơn. Cột `order_id` nhiều gấp 55 lần cột `menu_item_id` nhưng sai số lại nhỏ hơn — đúng bản chất của thuật toán, vốn dùng lượng bộ nhớ cố định cho mọi kích thước dữ liệu.
+
+**Khi nào chấp nhận sai số này.** Với câu hỏi dạng "có khoảng bao nhiêu khách hàng hoạt động tháng này", sai lệch 469 trên 120.000 không làm thay đổi kết luận nào. Nhưng với đối soát tài chính hoặc kiểm tra tính duy nhất của khoá chính, sai số nào cũng không chấp nhận được. Hai cột cardinality thấp trong bảng được đánh dấu `exact` chính vì lý do đó: đếm chính xác 8 giá trị gần như không tốn gì, không có lý do gì phải đánh đổi.
+
+**Về cột thời gian trong bảng.** Trên pandas chạy một máy, `nunique` gọi xuống mã C đã tối ưu nên nhanh hơn bản HyperLogLog viết bằng Python — cột `speedup` vì thế hiện giá trị nhỏ hơn 1. Con số này không phản ánh lợi thế thật của phương pháp xấp xỉ, vốn chỉ bộc lộ khi chạy phân tán với chi phí shuffle chiếm phần lớn thời gian. Giá trị của bảng nằm ở cột `error_pct`: sai số dưới 2% trong khi bộ nhớ tiêu tốn là hằng số.
+
 ### 3.3. Schema evolution — lược đồ tiến hoá
 
 Đây là phần đòi hỏi cẩn thận nhất về mặt kỹ thuật.
@@ -251,7 +275,7 @@ Hai dòng `LOW` được giữ lại có chủ ý làm đối chứng. Chính s�
 
 **Cách làm đúng:** ghi hai lô parquet bằng hai lệnh độc lập, với số cột thật sự khác nhau. Vì Parquet nhúng lược đồ vào trong từng file, hai thư mục partition sẽ khác nhau về cấu trúc ở mức file.
 
-Kết quả đo được bằng cách đọc thẳng metadata của từng file parquet (`01_profile_full.txt`, bảng 7):
+Kết quả đo được bằng cách đọc thẳng metadata của từng file parquet (`01_profile_full.txt`, bảng 8):
 
 ```
  n_columns  has_spice_level  n_partitions          first_partition           last_partition
@@ -261,7 +285,7 @@ Kết quả đo được bằng cách đọc thẳng metadata của từng file 
 
 90 partition trước mốc 2026-04-20 có 7 cột, 90 partition sau đó có 8 cột. Ranh giới đúng bằng giá trị `schema_evolution.v2_start_date` trong cấu hình. Đây là bằng chứng ở mức file, không thể nguỵ tạo.
 
-**Hai loại null khác bản chất.** Khi đọc gộp cả hai lô với `mergeSchema` bật, Spark hợp nhất thành 8 cột và tự điền null cho các dòng đến từ lô cũ. Kết quả (`01_profile_full.txt`, bảng 8):
+**Hai loại null khác bản chất.** Khi đọc gộp cả hai lô với `mergeSchema` bật, Spark hợp nhất thành 8 cột và tự điền null cho các dòng đến từ lô cũ. Kết quả (`01_profile_full.txt`, bảng 9):
 
 ```
 _source_schema  rows  spice_null  null_pct
@@ -284,7 +308,7 @@ Chênh lệch thời gian này là bắt buộc. Nếu hai dòng giống hệt n
 row_number() OVER (PARTITION BY order_id ORDER BY ingested_at DESC) = 1
 ```
 
-Kết quả đo được (`01_profile_full.txt`, bảng 9):
+Kết quả đo được (`01_profile_full.txt`, bảng 10):
 
 ```
  rows_before_dedup  rows_after_dedup  duplicates_removed  actual_dup_rate_pct  config_dup_rate_pct
@@ -297,7 +321,7 @@ Kết quả đo được (`01_profile_full.txt`, bảng 9):
 
 Ba phép kiểm tra sẽ được chạy ở Validate stage của Phase 3. Dữ liệu phải **có lỗi thật** thì bước kiểm tra mới có ý nghĩa — nếu mọi kiểm tra luôn xanh thì Validate stage chỉ là hình thức.
 
-Kết quả đo được (`01_profile_full.txt`, bảng 10):
+Kết quả đo được (`01_profile_full.txt`, bảng 11):
 
 ```
                                       check  violations  actual_pct  config_pct
@@ -312,7 +336,7 @@ Phép kiểm tra thứ ba luôn cho kết quả 0 — đó là ràng buộc **c�
 
 Khoảng 3% dòng `order_item` có số lượng từ 13 đến 25 phần — mô phỏng đơn đặt tập thể của văn phòng. Nhưng giá trị ngoại lai này không được sinh ngẫu nhiên: nó chỉ xuất hiện khi thoả đồng thời ba điều kiện là món thuộc nhóm cơm, bún hoặc trà sữa; đặt trong khung 11 đến 13 giờ; và rơi vào ngày trong tuần.
 
-Kết quả đo được (`01_profile_full.txt`, bảng 11):
+Kết quả đo được (`01_profile_full.txt`, bảng 12):
 
 ```
  bulk_rows  bulk_pct_of_items  pct_in_lunch_hours  pct_on_weekday  max_quantity
@@ -531,6 +555,17 @@ Bảng dưới tổng hợp mọi tỷ lệ đã khai báo trong cấu hình và
 
 Mọi sai lệch đều dưới 1,1 điểm phần trăm, phần lớn dưới 0,2. Đây là bằng chứng generator đọc tham số từ cấu hình chứ không viết cứng giá trị trong mã.
 
+Riêng phần đếm xấp xỉ, sai số của HyperLogLog so với đếm chính xác:
+
+| Cột | Chính xác | Xấp xỉ | Sai số |
+|---|---|---|---|
+| `customer_id` | 120.000 | 120.469 | +0,391% |
+| `restaurant_id` | 8.000 | 7.993 | −0,088% |
+| `menu_item_id` | 45.000 | 45.854 | +1,898% |
+| `order_id` | 2.500.000 | 2.505.196 | +0,208% |
+| `delivery_city` | 8 | 8 | 0,000% |
+| `menu_item.category` | 8 | 8 | 0,000% |
+
 Tất cả kết quả đều tái tạo được nhờ seed cố định (`meta.seed: 42`), áp dụng cho cả `random` lẫn `numpy`. Chạy lại generator sẽ cho ra đúng bộ dữ liệu cũ — điều kiện cần để các số liệu trong tài liệu này giữ nguyên giá trị.
 
 ---
@@ -551,7 +586,7 @@ Ba điểm chưa hoàn thiện, ghi lại để minh bạch.
 
 | Tệp | Nội dung |
 |---|---|
-| `01_profile_full.txt` | 11 bảng đo chất lượng dữ liệu offline |
+| `01_profile_full.txt` | 12 bảng đo chất lượng dữ liệu offline |
 | `02_verify_sinks.txt` | Kiểm chứng đọc ngược từ MinIO và PostgreSQL |
 | `03_minio_raw_buckets.png` | MinIO console, bucket `raw`, danh sách partition của bảng `order` |
 | `04_postgres_source_system.png` | DBeaver, schema `source_system`, ba bảng và số dòng |

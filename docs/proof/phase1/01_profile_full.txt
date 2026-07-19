@@ -68,27 +68,38 @@ order_item      order_id         2500000     6250053 0.4000        HIGH
  menu_item      category               8       45000 0.0002         LOW
 
 ======================================================================
-7. SCHEMA EVOLUTION - schema thực tế trong file parquet
+7. HIGH CARDINALITY - đếm chính xác so với approx_count_distinct
+======================================================================
+     table        column  exact_count  approx_count  error_pct  exact_sec  approx_sec speedup nen_dung
+     order   customer_id       120000        120469      0.391     0.1457      0.7393   0.20x   approx
+     order restaurant_id         8000          7993     -0.088     0.0244      0.3009   0.08x   approx
+     order delivery_city            8             8      0.000     0.0295      0.2553   0.12x    exact
+order_item  menu_item_id        45000         45854      1.898     0.0996      1.0020   0.10x   approx
+order_item      order_id      2500000       2505196      0.208     0.3327      2.4906   0.13x   approx
+ menu_item      category            8             8      0.000     0.0009      0.0048   0.19x    exact
+
+======================================================================
+8. SCHEMA EVOLUTION - schema thực tế trong file parquet
 ======================================================================
  n_columns  has_spice_level  n_partitions          first_partition           last_partition
          7            False            90 ingested_date=2026-01-20 ingested_date=2026-04-19
          8             True            90 ingested_date=2026-04-20 ingested_date=2026-07-18
 
 ======================================================================
-8. SCHEMA EVOLUTION - null sau khi hợp nhất schema
+9. SCHEMA EVOLUTION - null sau khi hợp nhất schema
 ======================================================================
 _source_schema  rows  spice_null  null_pct
   v1_no_column 20143       20143    100.00
  v2_has_column 24857        9037     36.36
 
 ======================================================================
-9. DUPLICATE - trước và sau khi khử trùng
+10. DUPLICATE - trước và sau khi khử trùng
 ======================================================================
  rows_before_dedup  rows_after_dedup  duplicates_removed  actual_dup_rate_pct  config_dup_rate_pct
            2550000           2500000               50000                  2.0                  2.0
 
 ======================================================================
-10. DEFECT - vi phạm ràng buộc tham chiếu và nhất quán
+11. DEFECT - vi phạm ràng buộc tham chiếu và nhất quán
 ======================================================================
                                       check  violations  actual_pct  config_pct
               total_amount != SUM(subtotal)        7500         0.3         0.3
@@ -96,7 +107,7 @@ review.restaurant_id != order.restaurant_id        3186         0.5         0.5
                   đơn huỷ thiếu reason_code           0         0.0         0.0
 
 ======================================================================
-11. OUTLIER - đơn số lượng lớn
+12. OUTLIER - đơn số lượng lớn
 ======================================================================
  bulk_rows  bulk_pct_of_items  pct_in_lunch_hours  pct_on_weekday  max_quantity
      29875              0.478               100.0           100.0            25

@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -105,6 +106,172 @@ def report_cardinality(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
                 "total_rows": len(s),
                 "ratio": round(n_distinct / max(len(s), 1), 4),
                 "cardinality": "HIGH" if n_distinct > 1000 else "LOW",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+class HyperLogLog:
+    """Ước lượng số giá trị phân biệt bằng thuật toán HyperLogLog.
+
+    Đây là bản cài đặt thu gọn của đúng thuật toán mà hàm
+    `approx_count_distinct` của Spark sử dụng. Viết lại ở đây để phần đo
+    đạc chạy được trên pandas mà không cần khởi động cụm Spark, nhưng
+    nguyên lý và mức sai số thì giống hệt.
+
+    Ý tưởng: thay vì nhớ toàn bộ giá trị đã gặp — vốn tốn bộ nhớ tỷ lệ
+    thuận với số giá trị phân biệt — thuật toán chỉ băm mỗi giá trị rồi
+    ghi lại vị trí bit 1 đầu tiên trong phần đuôi của mã băm. Giá trị
+    phân biệt càng nhiều thì xác suất bắt gặp một mã băm có chuỗi 0 dài
+    càng cao. Từ thống kê đó suy ngược ra số lượng.
+
+    Bộ nhớ tiêu tốn cố định ở mức vài kilobyte bất kể dữ liệu lớn cỡ nào,
+    đổi lại kết quả có sai số khoảng 1 đến 2 phần trăm.
+
+    Attributes:
+        p: số bit dùng để chia nhóm. p=14 cho 16384 nhóm, sai số ~0,81%.
+        m: số nhóm, bằng 2 mũ p.
+    """
+
+    def __init__(self, p: int = 14) -> None:
+        self.p = p
+        self.m = 1 << p
+        self.registers = np.zeros(self.m, dtype=np.int8)
+        # Hằng số hiệu chỉnh thiên lệch, lấy theo công thức gốc của
+        # Flajolet và cộng sự.
+        if self.m == 16:
+            self.alpha = 0.673
+        elif self.m == 32:
+            self.alpha = 0.697
+        elif self.m == 64:
+            self.alpha = 0.709
+        else:
+            self.alpha = 0.7213 / (1 + 1.079 / self.m)
+
+    def add_many(self, values: np.ndarray) -> None:
+        """Nạp một mảng giá trị vào bộ đếm.
+
+        Args:
+            values: mảng giá trị cần đếm, kiểu bất kỳ chuyển được sang chuỗi.
+        """
+        # Băm bằng hàm băm 64 bit của pandas, cho phân phối đều và nhanh
+        # hơn nhiều so với gọi hashlib từng phần tử.
+        hashes = pd.util.hash_array(np.asarray(values, dtype=object))
+
+        # p bit đầu xác định nhóm, phần còn lại dùng để đếm số 0 dẫn đầu.
+        idx = (hashes >> (64 - self.p)).astype(np.int64)
+        rest = (hashes << self.p) & 0xFFFFFFFFFFFFFFFF
+
+        # Vị trí bit 1 đầu tiên tính từ trái, cộng 1 theo quy ước.
+        with np.errstate(divide="ignore"):
+            leading = np.where(
+                rest == 0,
+                64 - self.p + 1,
+                64 - np.floor(np.log2(np.maximum(rest, 1))).astype(np.int64),
+            )
+        leading = np.minimum(leading, 64 - self.p + 1).astype(np.int8)
+
+        # Mỗi nhóm giữ giá trị lớn nhất từng gặp.
+        np.maximum.at(self.registers, idx, leading)
+
+    def count(self) -> int:
+        """Suy ra số giá trị phân biệt từ trạng thái các nhóm.
+
+        Returns:
+            Số giá trị phân biệt ước lượng.
+        """
+        # Trung bình điều hoà của các nhóm, nhân hệ số hiệu chỉnh.
+        raw = self.alpha * self.m * self.m / np.sum(2.0 ** -self.registers)
+
+        # Khi số lượng nhỏ, nhiều nhóm còn rỗng nên phải hiệu chỉnh lại
+        # bằng công thức đếm nhóm rỗng, nếu không kết quả sẽ vống lên.
+        n_zero = int(np.sum(self.registers == 0))
+        if raw <= 2.5 * self.m and n_zero > 0:
+            raw = self.m * np.log(self.m / n_zero)
+
+        return int(round(raw))
+
+
+def report_approx_count_distinct(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """So sánh đếm chính xác và đếm xấp xỉ trên các cột khoá.
+
+    Đây là phần trả lời cho câu hỏi cốt lõi của high cardinality: khi nào
+    nên chấp nhận sai số để đổi lấy tốc độ và bộ nhớ.
+
+    Với cột cardinality thấp như `delivery_city` chỉ 8 giá trị, đếm chính
+    xác gần như không tốn gì, và sai số của phương pháp xấp xỉ lại chiếm
+    tỷ lệ đáng kể — không có lý do gì để dùng.
+
+    Với cột cardinality cao như `customer_id` 120 nghìn giá trị hay
+    `order_id` 2,5 triệu giá trị, đếm chính xác buộc phải giữ toàn bộ tập
+    giá trị trong bộ nhớ và thực hiện shuffle nặng khi chạy phân tán,
+    trong khi phương pháp xấp xỉ chỉ tốn vài kilobyte cố định.
+
+    Nguyên tắc chọn: sai số 1 đến 2 phần trăm chấp nhận được với câu hỏi
+    dạng "có khoảng bao nhiêu khách hàng hoạt động", nhưng không chấp
+    nhận được với đối soát tài chính hay kiểm tra tính duy nhất của khoá.
+
+    Lưu ý khi đọc cột `speedup`: trên pandas một máy, `nunique` gọi xuống
+    mã C đã tối ưu nên rất nhanh, còn bản HyperLogLog viết bằng Python
+    chịu thêm chi phí băm và cấp phát mảng. Vì thế con số ở đây không
+    phản ánh lợi thế thật của phương pháp xấp xỉ.
+
+    Lợi thế đó chỉ bộc lộ khi chạy phân tán: `countDistinct` của Spark
+    buộc phải shuffle toàn bộ giá trị về cùng một nơi để loại trùng, còn
+    `approx_count_distinct` chỉ cần trao đổi các thanh ghi vài kilobyte
+    giữa các executor rồi hợp nhất. Điều đáng chú ý ở bảng này là cột
+    `error_pct`: sai số nằm trong khoảng 1 phần trăm dù chỉ dùng bộ nhớ
+    cố định.
+
+    Args:
+        tables: ánh xạ tên bảng sang DataFrame.
+
+    Returns:
+        Bảng so sánh hai phương pháp kèm sai số và thời gian chạy.
+    """
+    import time
+
+    checks = [
+        ("order", "customer_id"),
+        ("order", "restaurant_id"),
+        ("order", "delivery_city"),
+        ("order_item", "menu_item_id"),
+        ("order_item", "order_id"),
+        ("menu_item", "category"),
+    ]
+
+    rows = []
+    for table, col in checks:
+        if table not in tables or col not in tables[table].columns:
+            continue
+        s = tables[table][col]
+
+        # --- Đếm chính xác ---
+        t0 = time.perf_counter()
+        exact = int(s.nunique())
+        t_exact = time.perf_counter() - t0
+
+        # --- Đếm xấp xỉ bằng HyperLogLog ---
+        t0 = time.perf_counter()
+        hll = HyperLogLog(p=14)
+        hll.add_many(s.to_numpy())
+        approx = hll.count()
+        t_approx = time.perf_counter() - t0
+
+        err_pct = (approx - exact) / exact * 100 if exact else 0.0
+        speedup = t_exact / t_approx if t_approx > 0 else 0.0
+
+        rows.append(
+            {
+                "table": table,
+                "column": col,
+                "exact_count": exact,
+                "approx_count": approx,
+                "error_pct": round(err_pct, 3),
+                "exact_sec": round(t_exact, 4),
+                "approx_sec": round(t_approx, 4),
+                "speedup": f"{speedup:.2f}x",
+                "nen_dung": "approx" if exact > 1000 else "exact",
             }
         )
     return pd.DataFrame(rows)
@@ -380,19 +547,23 @@ def main() -> None:
     )
     show("6. HIGH CARDINALITY - số giá trị phân biệt", report_cardinality(tables))
     show(
-        "7. SCHEMA EVOLUTION - schema thực tế trong file parquet",
+        "7. HIGH CARDINALITY - đếm chính xác so với approx_count_distinct",
+        report_approx_count_distinct(tables),
+    )
+    show(
+        "8. SCHEMA EVOLUTION - schema thực tế trong file parquet",
         report_schema_evolution(root),
     )
     show(
-        "8. SCHEMA EVOLUTION - null sau khi hợp nhất schema",
+        "9. SCHEMA EVOLUTION - null sau khi hợp nhất schema",
         report_null_after_merge(root),
     )
-    show("9. DUPLICATE - trước và sau khi khử trùng", report_duplicates(orders, cfg))
+    show("10. DUPLICATE - trước và sau khi khử trùng", report_duplicates(orders, cfg))
     show(
-        "10. DEFECT - vi phạm ràng buộc tham chiếu và nhất quán",
+        "11. DEFECT - vi phạm ràng buộc tham chiếu và nhất quán",
         report_defects(orders, items, reviews, cfg),
     )
-    show("11. OUTLIER - đơn số lượng lớn", report_quantity_outlier(items, orders))
+    show("12. OUTLIER - đơn số lượng lớn", report_quantity_outlier(items, orders))
 
 
 if __name__ == "__main__":
