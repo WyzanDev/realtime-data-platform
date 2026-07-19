@@ -1,0 +1,44 @@
+# =============================================================================
+# Dockerfile.naive — phiên bản CHƯA tối ưu, dùng làm mốc so sánh
+# =============================================================================
+#
+# File này cố ý viết theo cách phổ biến nhất mà người mới thường làm, để đo
+# xem các kỹ thuật tối ưu ở Dockerfile chính giúp giảm được bao nhiêu.
+# KHÔNG dùng file này để chạy thật.
+#
+# Bốn vấn đề cố ý giữ lại:
+#
+#   1. Ảnh nền đầy đủ (python:3.11) nặng khoảng 1 GB, kèm trình biên dịch,
+#      công cụ phát triển và tài liệu mà lúc chạy không hề dùng tới.
+#
+#   2. Sao chép toàn bộ thư mục trước khi cài thư viện, khiến mọi thay đổi
+#      mã nguồn đều làm mất hiệu lực lớp cache của bước cài đặt.
+#
+#   3. Chỉ có một tầng build duy nhất, nên toàn bộ công cụ biên dịch nằm
+#      lại trong ảnh cuối cùng.
+#
+#   4. Chạy bằng quyền root.
+#
+# =============================================================================
+
+FROM python:3.11
+
+WORKDIR /app
+
+# Sao chép mọi thứ trước, kể cả tệp không liên quan tới việc cài thư viện.
+COPY . .
+
+# Cài thêm công cụ biên dịch. Chúng chỉ cần lúc dịch mã nguồn của một số gói,
+# nhưng ở đây sẽ nằm lại vĩnh viễn trong ảnh.
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    git \
+    curl \
+    vim
+
+RUN pip install -r requirements.txt
+
+CMD ["python", "-m", "data_generator.main", "--mode", "offline"]

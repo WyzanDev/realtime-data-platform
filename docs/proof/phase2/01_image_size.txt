@@ -1,0 +1,75 @@
+===========================================================
+TỐI ƯU ẢNH DOCKER — TỔNG HỢP TOÀN HỆ THỐNG
+Thời điểm đo: 2026-07-20 00:06:50
+===========================================================
+
+A. ẢNH TỰ BUILD — ÁP DỤNG MULTISTAGE
+-----------------------------------------------------------
+Ảnh                          Trước          Sau     Giảm
+data-generator                 644.8MB     164.0MB      74.5%
+
+  Số lớp: 11 xuống 9
+
+B. ẢNH THAY BẰNG PHIÊN BẢN RÚT GỌN
+-----------------------------------------------------------
+Ảnh                          Trước          Sau     Giảm
+redis                           41.5MB      15.5MB      62.6%
+postgres                       150.7MB     109.8MB      27.1%
+
+C. ẢNH AIRFLOW — DỰNG SẴN THƯ VIỆN THAY VÌ CÀI LÚC CHẠY
+-----------------------------------------------------------
+apache/airflow:2.9.3 (gốc)     387.6MB
+project-airflow:2.9.3          389.6MB
+
+  Ảnh này KHÔNG giảm dung lượng, thậm chí tăng nhẹ vì thư viện
+  được nhúng sẵn. Lợi ích nằm ở chỗ khác: bốn container Airflow
+  không còn phải cài lại thư viện mỗi lần khởi động.
+
+D. ẢNH GIỮ NGUYÊN
+-----------------------------------------------------------
+bitnamilegacy/spark:3.5        825.3MB  không có bản rút gọn chính thức
+flink:1.18-scala_2.12          549.6MB  đổi bản java11 dễ vỡ job
+bitnamilegacy/kafka:3.7        367.6MB  đổi image phải cấu hình lại KRaft
+
+===========================================================
+TỔNG DUNG LƯỢNG TIẾT KIỆM: 547.7 MB
+===========================================================
+
+E. KIỂM CHỨNG ẢNH CHẠY ĐƯỢC
+-----------------------------------------------------------
+Tài khoản chạy tiến trình trong ảnh bộ sinh dữ liệu:
+appuser
+
+Thư viện nạp được:
+  Python 3.11.15
+  pandas 3.0.3
+  numpy 2.4.6
+  pyarrow 25.0.0
+
+Không còn trình biên dịch trong ảnh cuối:
+  Đã loại bỏ gcc
+
+Provider Kafka đã nằm sẵn trong ảnh Airflow:
+  airflow.providers.apache.kafka sẵn sàng
+
+===========================================================
+GHI CHÚ VỀ CÁCH ĐO
+===========================================================
+Số liệu ở trên lấy từ `docker image inspect --format={{.Size}}`,
+tức dung lượng NÉN của ảnh (kích thước khi tải về hoặc đẩy lên
+kho ảnh).
+
+Lệnh `docker images` hiển thị dung lượng GIẢI NÉN, tức không gian
+thật sự chiếm trên đĩa sau khi ảnh được bung ra. Con số này lớn
+hơn khoảng 3 đến 4 lần.
+
+Đối chiếu hai cách đo với ảnh bộ sinh dữ liệu:
+
+  Phiên bản    Nén        Giải nén
+  naive        644.8 MB   2.46 GB
+  latest       164.0 MB   717 MB
+  Tỷ lệ giảm   74.5%      70.9%
+
+Cả hai cách đo đều cho cùng kết luận. Dung lượng nén phản ánh chi
+phí truyền tải qua mạng, dung lượng giải nén phản ánh chi phí lưu
+trữ trên máy chủ.
