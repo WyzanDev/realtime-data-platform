@@ -28,34 +28,50 @@ Ba ảnh còn lại — Spark, Flink, Kafka — được giữ nguyên, lý do t
 
 ## 2. Kết quả đo
 
-Số liệu lấy từ `docs/proof/phase2/01_image_size.txt`, đo ngày 20 tháng 7 năm 2026. Dung lượng ghi ở đây là dung lượng nén của ảnh, khác với con số `docker images` hiển thị.
+Số liệu đo ngày 20 tháng 7 năm 2026, lấy từ `docs/proof/phase2/01_image_size.txt` và ảnh chụp `02_docker_images.png`.
+
+### 2.0. Hai cách đo dung lượng ảnh
+
+Docker báo dung lượng ảnh theo hai cách khác nhau, chênh nhau khoảng ba tới bốn lần. Tài liệu này ghi cả hai để tránh nhầm lẫn khi đối chiếu các tệp bằng chứng.
+
+| Cách đo | Lệnh | Ý nghĩa |
+|---|---|---|
+| Dung lượng nén | `docker image inspect --format='{{.Size}}'` | Kích thước khi tải về hoặc đẩy lên kho ảnh |
+| Dung lượng giải nén | `docker images` | Không gian thật sự chiếm trên đĩa sau khi bung ra |
+
+Cả hai đều hợp lệ, chỉ khác mục đích: dung lượng nén phản ánh chi phí truyền qua mạng, dung lượng giải nén phản ánh chi phí lưu trữ trên máy chủ. Quan trọng là không trộn lẫn hai con số trong cùng một phép so sánh.
 
 ### 2.1. Ảnh tự dựng, áp dụng multistage
 
-| Ảnh | Trước | Sau | Giảm |
+| Chỉ số | Chưa tối ưu | Đã tối ưu | Giảm |
 |---|---|---|---|
-| `data-generator` | 644,8 MB | 164,0 MB | **480,8 MB — 74,5%** |
+| Dung lượng nén | 644,8 MB | 164,0 MB | 480,8 MB — **74,5%** |
+| Dung lượng giải nén | 2,46 GB | 717 MB | 1,74 GB — **70,9%** |
 | Số lớp | 11 | 9 | |
+
+Hai cách đo cho tỷ lệ giảm gần bằng nhau, xác nhận kết quả không phụ thuộc cách chọn đơn vị.
 
 ### 2.2. Ảnh thay bằng phiên bản rút gọn
 
-| Ảnh | Trước | Sau | Giảm |
-|---|---|---|---|
-| `redis` | 41,5 MB | 15,5 MB | 26,0 MB — 62,6% |
-| `postgres` | 150,7 MB | 109,8 MB | 40,9 MB — 27,1% |
+| Ảnh | Trước (nén) | Sau (nén) | Giảm | Trước (giải nén) | Sau (giải nén) |
+|---|---|---|---|---|---|
+| `redis` | 41,5 MB | 15,5 MB | 62,6% | 170 MB | 57,8 MB |
+| `postgres` | 150,7 MB | 109,8 MB | 27,1% | 633 MB | 417 MB |
+
+Mức giảm của PostgreSQL khiêm tốn hơn Redis vì phần lớn dung lượng của nó là mã nguồn máy chủ cơ sở dữ liệu, không phải công cụ hệ thống có thể lược bỏ.
 
 ### 2.3. Ảnh Airflow
 
-| Ảnh | Dung lượng |
-|---|---|
-| `apache/airflow:2.9.3` (gốc) | 387,6 MB |
-| `project-airflow:2.9.3` | 389,6 MB |
+| Ảnh | Nén | Giải nén |
+|---|---|---|
+| `apache/airflow:2.9.3` (gốc) | 387,6 MB | 2,01 GB |
+| `project-airflow:2.9.3` | 389,6 MB | 2,02 GB |
 
 Ảnh này **không giảm dung lượng**, thậm chí tăng 2 MB vì thư viện được nhúng sẵn thay vì tải về lúc chạy. Lợi ích nằm ở chỗ khác, trình bày ở mục 3.7.
 
 ### 2.4. Ảnh giữ nguyên
 
-| Ảnh | Dung lượng | Lý do giữ |
+| Ảnh | Nén | Lý do giữ |
 |---|---|---|
 | `bitnamilegacy/spark:3.5` | 825,3 MB | Không có bản rút gọn chính thức |
 | `flink:1.18-scala_2.12` | 549,6 MB | Bản `java11` nhẹ hơn nhưng dễ vỡ job |
@@ -63,11 +79,13 @@ Số liệu lấy từ `docs/proof/phase2/01_image_size.txt`, đo ngày 20 thán
 
 ### 2.5. Tổng hợp
 
-**Tổng dung lượng tiết kiệm: 547,7 MB.**
+**Tổng dung lượng tiết kiệm: 547,7 MB tính theo dung lượng nén.**
 
-Trong đó phần lớn đến từ một ảnh duy nhất là `data-generator` với 480,8 MB, chiếm gần 88% tổng mức giảm. Điều này phản ánh đúng bản chất của multistage build: kỹ thuật này chỉ áp dụng được cho ảnh tự dựng, và hiệu quả tỷ lệ thuận với lượng công cụ biên dịch mà ảnh gốc mang theo.
+Trong đó riêng `data-generator` đóng góp 480,8 MB, chiếm gần 88% tổng mức giảm. Điều này phản ánh đúng bản chất của multistage build: kỹ thuật chỉ áp dụng được cho ảnh tự dựng, và hiệu quả tỷ lệ thuận với lượng công cụ biên dịch mà ảnh gốc mang theo. Hai ảnh còn lại chỉ đổi được ảnh nền, nên mức giảm nhỏ hơn nhiều.
 
-Ba phép kiểm chứng ảnh chạy được đều đạt:
+### 2.6. Kiểm chứng ảnh chạy được và chạy đúng
+
+Ba phép kiểm tra tự động trong script dựng:
 
 ```
 Tài khoản chạy tiến trình: appuser
@@ -75,6 +93,23 @@ Python 3.11.15, pandas 3.0.3, numpy 2.4.6, pyarrow 25.0.0
 Không còn gcc trong ảnh cuối
 Provider Kafka nạp được trong ảnh Airflow
 ```
+
+Ngoài ra, chạy thử vùng chứa với khối lượng nhỏ để xác nhận nó không chỉ khởi động được mà còn sinh đúng dữ liệu:
+
+```
+customers: 120
+restaurants: 10
+drivers: 10
+menu_items_v1: 19
+menu_items_v2: 26
+orders_before_dup: 2500
+orders_after_dup: 2550
+order_items: 6253
+reviews: 634
+schema_evolution: {'v1_files': 15, 'v2_files': 23, 'v1_cols': 7, 'v2_cols': 8}
+```
+
+Hai chi tiết trong kết quả này xác nhận logic sinh dữ liệu còn nguyên vẹn sau khi đóng gói: số đơn tăng từ 2500 lên 2550 đúng bằng tỷ lệ trùng lặp 2 phần trăm đã cấu hình, và hai lô lược đồ có số cột khác nhau là 7 và 8 đúng như thiết kế tiến hoá lược đồ.
 
 Lệnh dựng và đo:
 
@@ -289,9 +324,9 @@ Nguyên tắc chung: mọi ảnh trong tệp compose đều phải ghim phiên b
 
 ---
 
-### 3.10. Hai sự cố gặp phải trong quá trình tối ưu
+### 3.10. Ba sự cố gặp phải trong quá trình tối ưu
 
-Cả hai đều thuộc loại triệu chứng xuất hiện ở một nơi nhưng nguyên nhân nằm ở nơi khác, nên ghi lại cách chẩn đoán.
+Cả ba đều thuộc loại triệu chứng xuất hiện ở một nơi nhưng nguyên nhân nằm ở nơi khác, nên ghi lại cách chẩn đoán.
 
 **Tệp ràng buộc mâu thuẫn với ràng buộc thực tế của provider Kafka.**
 
@@ -347,6 +382,30 @@ docker compose up -d
 Cách chẩn đoán: khi một container báo lỗi liên quan tới tài nguyên do container khác cung cấp, đọc nhật ký của container cung cấp trước. Thông báo lỗi ở phía tiêu thụ thường chỉ mô tả hậu quả, không nêu nguyên nhân.
 
 Để tránh hẳn loại lỗi quyền tệp này, có thể chuyển tệp khởi tạo sang định dạng `.sql`. PostgreSQL chạy tệp `.sql` bằng `psql` nên chỉ cần quyền đọc, không cần quyền thực thi. Đánh đổi là tệp `.sql` không đọc được biến môi trường, nên tên cơ sở dữ liệu và tài khoản phải viết cứng.
+
+**Thư mục gắn từ máy chủ ghi đè quyền đã đặt trong ảnh.**
+
+Sau khi đổi sang chạy bằng tài khoản thường, vùng chứa báo lỗi ở bước ghi tệp:
+
+```
+PermissionError: [Errno 13] Permission denied: 'output/menu_item'
+```
+
+Điều đáng chú ý là chương trình đã chạy xong toàn bộ sáu bước sinh dữ liệu rồi mới thất bại. Nghĩa là logic hoàn toàn đúng, chỉ có bước ghi ra đĩa bị chặn.
+
+Dockerfile đã có sẵn dòng tạo thư mục và trao quyền:
+
+```dockerfile
+RUN mkdir -p /app/output && chown appuser:appuser /app/output
+```
+
+Nhưng dòng này chỉ tác động lên lớp ảnh. Khi chạy với thư mục gắn từ máy chủ, thư mục đó đè lên hoàn toàn và giữ nguyên quyền của phía máy chủ. Đây là hành vi cố ý của Docker chứ không phải lỗi.
+
+Có hai lớp nguyên nhân chồng lên nhau ở đây. Thứ nhất, thư mục trên máy chủ được Docker tự tạo ở lần chạy đầu tiên nên thuộc quyền quản trị. Thứ hai, ngay cả khi thư mục thuộc đúng người dùng, mã người dùng bên trong ảnh vẫn khác mã trên máy chủ.
+
+Cách xử lý là dùng tuỳ chọn `--user` để chạy tiến trình bằng đúng mã người dùng của máy chủ, chi tiết ở mục 7. Dòng `chown` trong Dockerfile vẫn được giữ vì nó cần thiết khi chạy với ổ đĩa ảo có tên hoặc khi không gắn thư mục nào.
+
+Cách chẩn đoán: khi lỗi quyền xuất hiện đúng ở đường dẫn được gắn từ máy chủ, kiểm tra quyền của thư mục đó trên máy chủ bằng `ls -ld` trước khi nghi ngờ cấu hình bên trong ảnh. Cũng lưu ý `chmod +x` chỉ thêm quyền thực thi mà không thêm quyền đọc — cần `chmod 755` để cấp đủ.
 
 Không phải ảnh nào cũng nên tối ưu. Ba ảnh sau được giữ nguyên sau khi cân nhắc chi phí và rủi ro.
 
@@ -414,12 +473,30 @@ docker build -f docker/data-generator/Dockerfile -t data-generator:latest .
 Chạy sinh dữ liệu thử với khối lượng nhỏ:
 
 ```bash
+mkdir -p output_docker
+
 docker run --rm \
   --env-file .env \
   --network project_default \
-  -v "$(pwd)/output:/app/output" \
-  data-generator:latest --mode offline --scale 0.01
+  -v "$(pwd)/output_docker:/data" \
+  --user "$(id -u):$(id -g)" \
+  data-generator:latest --mode offline --scale 0.001 --out /data
 ```
+
+Hai chi tiết trong lệnh trên đáng giải thích, vì thiếu chúng sẽ gặp lỗi quyền truy cập khó hiểu.
+
+**Vì sao phải tạo thư mục trước.** Nếu thư mục đích chưa tồn tại, Docker tự tạo nó bằng quyền quản trị. Kết quả là thư mục thuộc `root` trong khi người dùng thường không ghi vào được. Lệnh `mkdir -p` chạy sau đó cũng không sửa được gì, vì thư mục đã tồn tại nên lệnh trả về thành công mà không làm gì cả. Triệu chứng khi đó là `Permission denied` ở bước ghi tệp, sau khi chương trình đã chạy xong toàn bộ phần tính toán.
+
+Nếu đã lỡ để Docker tạo, phải xoá bằng quyền quản trị rồi tạo lại:
+
+```bash
+sudo rm -rf output_docker
+mkdir -p output_docker
+```
+
+**Vì sao cần tuỳ chọn `--user`.** Ảnh này chạy bằng tài khoản `appuser` được tạo trong Dockerfile, có mã người dùng khác với tài khoản trên máy chủ. Khi gắn thư mục từ máy chủ vào, quyền của thư mục đó được giữ nguyên và ghi đè lên mọi thiết lập bên trong ảnh — lệnh `chown` lúc dựng ảnh vì thế không có tác dụng. Đây là hành vi cố ý của Docker chứ không phải lỗi.
+
+Tuỳ chọn `--user "$(id -u):$(id -g)"` yêu cầu tiến trình chạy bằng đúng mã người dùng của bạn, nhờ vậy ghi được vào thư mục và tệp sinh ra cũng thuộc quyền sở hữu của bạn. Tệp cấu hình Docker Compose của dự án dùng đúng kỹ thuật này cho các dịch vụ Airflow, qua khai báo `user: "${AIRFLOW_UID:-50000}:0"`.
 
 Bơm dữ liệu vào Kafka:
 
@@ -430,6 +507,8 @@ docker run --rm \
   data-generator:latest --mode streaming --minutes 240
 ```
 
+Lệnh này không cần gắn thư mục vì dữ liệu đi thẳng vào Kafka, không ghi ra đĩa.
+
 Vùng chứa nối vào mạng nội bộ của Docker Compose nên dùng được tên dịch vụ (`minio`, `postgres`, `kafka`) thay vì `localhost`. Đây là điểm khác biệt so với lúc chạy trực tiếp trên máy chủ, khi phải ghi đè bằng biến môi trường `MINIO_ENDPOINT` và `POSTGRES_HOST`.
 
 ---
@@ -438,8 +517,22 @@ Vùng chứa nối vào mạng nội bộ của Docker Compose nên dùng đư�
 
 | Tệp | Nội dung |
 |---|---|
-| `01_image_size.txt` | Bảng so sánh dung lượng, số lớp, và kết quả ba phép kiểm chứng |
-| `02_docker_images.png` | Kết quả `docker images` hiển thị cả hai ảnh |
-| `03_container_run.png` | Vùng chứa chạy thành công, sinh dữ liệu |
+| `01_image_size.txt` | Bảng so sánh dung lượng nén, số lớp, và bốn phép kiểm chứng tự động |
+| `02_docker_images.png` | Kết quả `docker images` — dung lượng giải nén của cả bốn cặp ảnh |
+| `03_container_run.png` | Vùng chứa chạy sinh dữ liệu thành công, kèm thống kê xác nhận logic còn nguyên vẹn |
 
 Toàn bộ tệp nằm trong `docs/proof/phase2/`.
+
+Lưu ý khi đối chiếu `01_image_size.txt` với `02_docker_images.png`: hai tệp dùng hai cách đo khác nhau như đã giải thích ở mục 2.0. Tệp văn bản ghi dung lượng nén, ảnh chụp ghi dung lượng giải nén. Cả hai cho cùng kết luận về tỷ lệ giảm.
+
+---
+
+## 9. Việc còn lại
+
+Ba hạng mục được ghi nhận nhưng chưa thực hiện, xếp theo mức độ ưu tiên.
+
+**Chuyển ảnh Kafka sang bản chính thức.** Nhà cung cấp Bitnami ngừng phát hành kho ảnh công khai, nên dự án đang dùng kho `bitnamilegacy` vốn không còn được cập nhật vá lỗi bảo mật. Ảnh `apache/kafka` chính thức nhẹ hơn và được duy trì, nhưng việc chuyển đổi đòi hỏi viết lại toàn bộ biến môi trường cấu hình KRaft và có nguy cơ mất dữ liệu trong các topic hiện có.
+
+**Đánh giá ảnh Flink bản `java11`.** Nhẹ hơn khoảng vài trăm megabyte. Cần kiểm thử các job Flink trên bản này trước khi đổi, vì sai khác phiên bản Java chỉ lộ ra lúc chạy chứ không lộ lúc dựng ảnh.
+
+**Tự dựng ảnh Spark tối giản.** Ảnh Spark hiện tại là ảnh nặng nhất hệ thống. Về lý thuyết có thể dựng một ảnh chỉ chứa máy ảo Java, thư viện Spark lõi và các gói kết nối cần thiết. Nhưng việc này tốn nhiều công sức kiểm thử và rủi ro thiếu thư viện lúc chạy job cao, nên chưa phù hợp với thời gian còn lại của dự án.
