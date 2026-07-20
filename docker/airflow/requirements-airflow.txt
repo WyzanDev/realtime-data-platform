@@ -2,19 +2,23 @@
 # Thư viện Python cần thêm vào ảnh Airflow của dự án
 # =============================================================================
 #
-# Các DAG cần đọc ghi MinIO qua giao thức S3, kết nối PostgreSQL và xử lý tệp
-# parquet. Ảnh gốc của Airflow không kèm sẵn những thư viện này.
+# Các DAG cần đọc ghi MinIO qua giao thức S3, kết nối PostgreSQL, xử lý tệp
+# parquet và tiêu thụ bản tin từ Kafka.
 #
-# Không ghim phiên bản ở đây, mà để tệp ràng buộc chính thức của Airflow tự
-# quyết. Ghim cứng sẽ dễ mâu thuẫn với các gói lõi mà Airflow đã ghim sẵn, và
-# pip sẽ báo không giải được phụ thuộc.
+# Không ghim phiên bản, để tệp ràng buộc chính thức của Airflow tự quyết,
+# tránh mâu thuẫn với các gói lõi đã được ghim sẵn.
 #
 # Provider Kafka KHÔNG nằm trong danh sách này. Nó được cài riêng trong
-# Dockerfile với tuỳ chọn --no-deps, vì tệp ràng buộc ghim nó ở phiên bản 1.5.0
-# vốn không tương thích với Airflow 2.9.3. Xem chú thích trong Dockerfile.
+# Dockerfile với tuỳ chọn --no-deps. Xem chú thích trong Dockerfile.
 # =============================================================================
 
 boto3
 pandas
 pyarrow
 PyYAML
+
+# Thư viện client Kafka dùng trong DAG. Provider của Airflow dùng
+# confluent-kafka, nhưng mã nạp dữ liệu gọi trực tiếp KafkaConsumer của
+# kafka-python nên cần cài riêng. Bản kafka-python gốc không còn được bảo
+# trì và lỗi trên Python 3.12, nên dùng nhánh cộng đồng kafka-python-ng.
+kafka-python-ng

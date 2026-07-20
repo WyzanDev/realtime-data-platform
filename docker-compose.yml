@@ -1,6 +1,9 @@
 #======================== AIRFLOW ===========================
 x-airflow-common: &airflow-common
-    image: apache/airflow:2.9.3
+    image: project-airflow:2.9.3
+    build:
+        context: .
+        dockerfile: docker/airflow/Dockerfile
     environment:
         - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
         - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${AIRFLOW_DB}
@@ -11,7 +14,6 @@ x-airflow-common: &airflow-common
         - AIRFLOW_CONN_POSTGRES_WAREHOUSE=${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
         - AIRFLOW_CONN_KAFKA=${AIRFLOW_CONN_KAFKA}
         - AIRFLOW_CONN_MINIO_S3=${AIRFLOW_CONN_MINIO_S3}
-        - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-kafka==1.4.0
     volumes:
         - ./dags:/opt/airflow/dags
         - airflow_logs:/opt/airflow/logs
