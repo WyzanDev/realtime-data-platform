@@ -1,0 +1,14 @@
+=== Lineage pipeline -> bảng (đẩy lên DataHub) ===
+  dp1_ingest_bronze      : 8 bảng vào -> 8 bảng ra
+  dp2_transform_gold     : 8 bảng vào -> 9 bảng ra
+  dp3_compute_features   : 7 bảng vào -> 3 bảng ra
+
+=== Assertion (data validation) + Data Contract ===
+  assertion: dp1-raw-orders-orderid => True
+  assertion: dp2-dim-customer-sk => True
+  assertion: dp2-dim-customer-iscurrent => True
+  assertion: dp3-feat-customer-eventts => True
+  assertion: dp3-feat-customer-created => True
+  data contract: dp1-bronze-orders => True
+  data contract: dp2-gold-customer => True
+  data contract: dp3-feat-customer => True
