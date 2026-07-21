@@ -161,6 +161,19 @@ services:
         container_name: airflow-worker
         restart: unless-stopped
         command: celery worker
+        # Task của luồng Spark gọi `docker exec spark-master ...` nên worker
+        # cần nói chuyện với docker daemon của host qua socket. Phải liệt kê
+        # lại các volume của airflow-common vì phép merge anchor ghi đè key
+        # `volumes` chứ không gộp.
+        volumes:
+            - ./dags:/opt/airflow/dags
+            - airflow_logs:/opt/airflow/logs
+            - /var/run/docker.sock:/var/run/docker.sock
+        # gid 115 là group `docker` trên host; thêm vào để tiến trình worker
+        # (uid 50000) có quyền đọc ghi socket. Giá trị này phụ thuộc máy host
+        # — kiểm tra bằng `getent group docker` và chỉnh nếu khác.
+        group_add:
+            - "115"
         depends_on:
             <<: *airflow-common-depends-on
             airflow-init:
@@ -175,9 +188,13 @@ services:
             - SPARK_MODE=master
         ports:
             - "8081:8080" # Spark Web UI
-            - "7077:7077" # Cổng submit jobs 
+            - "7077:7077" # Cổng submit jobs
         volumes:
             - ./jobs/spark:/opt/spark-jobs
+            # Driver ghi nhật ký sự kiện của mỗi lần chạy vào đây, để Spark
+            # History Server đọc lại. Nhờ vậy vẫn xem được sơ đồ stage/task
+            # của job ĐÃ CHẠY XONG — điều Spark UI của master không giữ.
+            - ./spark-events:/opt/spark-events
     spark-worker:
         image: bitnamilegacy/spark:3.5
         container_name: spark-worker
@@ -185,12 +202,36 @@ services:
         environment:
             - SPARK_MODE=worker
             - SPARK_MASTER_URL=spark://spark-master:7077
-            - SPARK_WORKER_MEMORY=2G
-            - SPARK_WORKER_CORES=2
+            # Cấp 6 nhân / 4 GB (host có 8 nhân / 11 GB). Cần đủ nhân thật để
+            # minh hoạ skew cho trung thực: một task straggler ôm 44% dữ liệu
+            # khiến các nhân còn lại ngồi không, và salting mới cho thấy lợi
+            # ích rõ khi rải tải ra nhiều nhân.
+            - SPARK_WORKER_MEMORY=4G
+            - SPARK_WORKER_CORES=6
         depends_on:
             - spark-master
         volumes:
             - ./jobs/spark:/opt/spark-jobs
+
+    # History Server đọc nhật ký sự kiện mà các driver đã ghi, dựng lại giao
+    # diện Spark UI cho những job đã kết thúc. Đây là nơi chụp màn hình bằng
+    # chứng skew (task lệch) và cải thiện sau tối ưu, vì job Phase 4 chạy
+    # nhanh, không kịp mở UI trực tiếp lúc đang chạy.
+    spark-history:
+        image: bitnamilegacy/spark:3.5
+        container_name: spark-history
+        restart: unless-stopped
+        environment:
+            # Trỏ History Server tới thư mục nhật ký sự kiện mà driver ghi ra.
+            - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=file:/opt/spark-events
+        # Chạy thẳng lớp HistoryServer ở tiền cảnh để container sống cùng nó.
+        command: /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+        ports:
+            - "18080:18080" # Spark History Server UI
+        volumes:
+            - ./spark-events:/opt/spark-events
+        depends_on:
+            - spark-master
 
     flink-jobmanager:
         image: flink:1.18-scala_2.12

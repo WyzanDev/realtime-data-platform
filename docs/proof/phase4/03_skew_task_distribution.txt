@@ -1,0 +1,42 @@
+Bằng chứng skew — phân bố thời gian task ở stage sort-merge join (stage 4),
+trích từ Spark History Server (localhost:18080), REST API taskSummary.
+
+Cụm: 1 worker, 6 nhân / 4 GB. Dữ liệu: raw_orders 2.550.000 dòng.
+Mỗi đơn được gắn mã toàn vẹn bằng băm SHA-256 lặp 100 vòng, chạy ở phía
+reduce của phép join theo delivery_city — nơi skew biểu hiện.
+
+====================================================================
+BASELINE — sort-merge join theo delivery_city (chưa xử lý skew)
+====================================================================
+  stage 4 (join + băm): 48 task
+     executorRunTime  trung vị =      18 ms
+                      p95      =  22.471 ms
+                      max      =  52.383 ms   <-- straggler: 1 task ôm HCM
+     Độ lệch max / trung vị  ≈  2.900 lần
+
+  → Toàn bộ đơn TP.HCM (44% dữ liệu, ~1,1 triệu dòng) dồn vào một partition.
+    Task xử lý partition đó chạy 52 giây trong khi trung vị chỉ 18 ms.
+
+====================================================================
+SALTED N=24 — join theo (delivery_city, salt)
+====================================================================
+  stage 4 (join + băm): 48 task
+     executorRunTime  trung vị =   4.559 ms
+                      p95      =  10.882 ms
+                      max      =  17.238 ms
+     Độ lệch max / trung vị  ≈  3,8 lần
+
+  → Đơn TP.HCM được rải đều ra 24 partition muối. Task chậm nhất giảm từ
+    52,4 s xuống 17,2 s (giảm ~3,0 lần), phân bố cân bằng hơn nhiều.
+
+--------------------------------------------------------------------
+Thời gian treo (wall-clock) toàn job:
+    baseline  = 60,8 giây
+    salted    = 55,9 giây
+
+Ghi chú trung thực: trên cụm nhỏ chỉ 6 nhân, công việc băm là compute-bound
+nên wall-clock bị chặn dưới bởi tổng-công-việc / số-nhân, khiến mức cải
+thiện wall-clock khiêm tốn dù task straggler giảm 3 lần. Trên cụm nhiều nhân
+(số nhân >> số thành phố), straggler mới là nút thắt và salting cho tăng tốc
+tỷ lệ thuận. Bằng chứng cốt lõi của skew là PHÂN BỐ THỜI GIAN TASK ở trên,
+không phải wall-clock.

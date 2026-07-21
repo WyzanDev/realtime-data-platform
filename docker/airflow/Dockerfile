@@ -36,7 +36,20 @@ USER root
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         libpq5 \
+        curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Chỉ lấy MỘT tệp thực thi `docker` (client CLI) từ gói tĩnh chính thức,
+# không cài cả docker daemon. Luồng spark_offline_processing dùng CLI này
+# để ra lệnh `docker exec spark-master spark-submit ...` — Airflow điều
+# phối, còn Spark chạy trong container của nó.
+#
+# Chỉ trích một tệp `docker/docker` trong gói nên phần thêm vào image chỉ
+# khoảng vài chục MB, nhẹ hơn nhiều so với cài qua kho apt (kéo theo daemon
+# và phụ thuộc). Ghim phiên bản để lần dựng nào cũng ra đúng một CLI.
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.3.1.tgz \
+        | tar -xz -C /usr/local/bin --strip-components=1 docker/docker \
+    && docker --version
 
 # Trả lại quyền cho tài khoản airflow trước khi cài thư viện Python.
 # Cài bằng quyền quản trị sẽ đặt tệp sai chủ sở hữu và Airflow không đọc được.

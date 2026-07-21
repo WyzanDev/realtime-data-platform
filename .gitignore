@@ -5,3 +5,6 @@ output/
 __pycache__/
 *.pyc
 output_docker/
+
+# Spark event logs for History Server (regenerated at runtime)
+/spark-events/
