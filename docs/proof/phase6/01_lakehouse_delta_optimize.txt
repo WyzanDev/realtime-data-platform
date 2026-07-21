@@ -1,0 +1,13 @@
+Phase 6 — Lakehouse (Delta Lake): compaction + Z-order. Trích nhật ký chạy thật.
+Job: jobs/spark/job_storage_lakehouse.py trên bronze/raw_orders (2.55 triệu đơn).
+
+===== KẾT THÚC: ghi Delta thành 200 tệp nhỏ — 30.8 giây =====
+========== TRƯỚC TỐI ƯU ==========
+===== KẾT THÚC: truy vấn lọc [trước] — 6.0 giây =====
+  [trước] số dòng khớp: 209 | số tệp bảng: 200
+===== KẾT THÚC: OPTIMIZE + ZORDER BY (delivery_city, restaurant_id) — 14.7 giây =====
+========== SAU TỐI ƯU ==========
+===== KẾT THÚC: truy vấn lọc [sau] — 2.5 giây =====
+  [sau] số dòng khớp: 209 | số tệp bảng: 1
+
+Bằng chứng compaction trên MinIO: 200 tệp ~250KiB  ->  1 tệp 42MiB sau OPTIMIZE ZORDER.
