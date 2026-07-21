@@ -30,6 +30,7 @@ PRIMARY_KEYS = {
     "gold.dim_menu_item": "menu_item_sk",
     "gold.fact_orders": "order_id",
     "gold.fact_delivery_events": "event_id",
+    "gold.fact_order_items": "order_item_id",
 }
 
 # Khoá ngoại từ fact tới dim: (bảng fact, cột, bảng dim, cột dim, tên ràng buộc).
@@ -38,6 +39,7 @@ FOREIGN_KEYS = [
     ("gold.fact_orders", "restaurant_sk", "gold.dim_restaurant", "restaurant_sk", "fk_orders_restaurant"),
     ("gold.fact_orders", "driver_sk", "gold.dim_driver", "driver_sk", "fk_orders_driver"),
     ("gold.fact_delivery_events", "driver_sk", "gold.dim_driver", "driver_sk", "fk_events_driver"),
+    ("gold.fact_order_items", "menu_item_sk", "gold.dim_menu_item", "menu_item_sk", "fk_items_menu"),
 ]
 
 # Các bảng chiều và khoá nghiệp vụ để kiểm tra bất biến SCD2.

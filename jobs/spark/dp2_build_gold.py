@@ -232,8 +232,8 @@ def build_dimensions(spark: SparkSession) -> dict[str, DataFrame]:
 
 def build_facts(
     spark: SparkSession, stg_orders: DataFrame, stg_events: DataFrame, dims: dict[str, DataFrame]
-) -> tuple[DataFrame, DataFrame]:
-    """Dựng hai bảng fact, nối tới chiều qua khoá thay thế của phiên bản hiện hành.
+) -> dict[str, DataFrame]:
+    """Dựng ba bảng fact, nối tới chiều qua khoá thay thế của phiên bản hiện hành.
 
     Args:
         spark: phiên Spark.
@@ -242,11 +242,12 @@ def build_facts(
         dims: các bảng chiều đã dựng.
 
     Returns:
-        Cặp (fact_orders, fact_delivery_events).
+        Từ điển tên fact → DataFrame.
     """
     dc = dims["customer"].filter("is_current").select("customer_sk", "customer_id")
     dr = dims["restaurant"].filter("is_current").select("restaurant_sk", "restaurant_id")
     dd = dims["driver"].filter("is_current").select("driver_sk", "driver_id")
+    dm = dims["menu_item"].filter("is_current").select("menu_item_sk", "menu_item_id")
 
     fact_orders = (
         stg_orders.join(dc, "customer_id", "left")
@@ -268,7 +269,21 @@ def build_facts(
     )
     _save_delta(spark, fact_events, "gold", "fact_delivery_events")
 
-    return fact_orders, fact_events
+    # fact_order_items: chi tiết món trong đơn, nối tới dim_menu_item. Đây là
+    # bảng khiến dim_menu_item có mặt trong sơ đồ sao (trước đó chưa nối fact nào).
+    order_items = read_bronze(spark, "raw_order_items").select(
+        "order_item_id", "order_id", "menu_item_id", "quantity", "unit_price", "subtotal"
+    )
+    fact_order_items = order_items.join(dm, "menu_item_id", "left").select(
+        "order_item_id", "order_id", "menu_item_sk", "quantity", "unit_price", "subtotal"
+    )
+    _save_delta(spark, fact_order_items, "gold", "fact_order_items")
+
+    return {
+        "orders": fact_orders,
+        "delivery_events": fact_events,
+        "order_items": fact_order_items,
+    }
 
 
 def main() -> None:
@@ -285,16 +300,17 @@ def main() -> None:
     print(">>> Dựng bốn bảng chiều SCD2...", flush=True)
     dims = build_dimensions(spark)
 
-    print(">>> Dựng hai bảng fact...", flush=True)
-    fact_orders, fact_events = build_facts(spark, stg_orders, stg_events, dims)
+    print(">>> Dựng ba bảng fact...", flush=True)
+    facts = build_facts(spark, stg_orders, stg_events, dims)
 
     print(">>> Mirror Gold sang PostgreSQL (cho sơ đồ quan hệ DBeaver)...", flush=True)
     _mirror_to_postgres(dims["customer"], "gold.dim_customer")
     _mirror_to_postgres(dims["restaurant"], "gold.dim_restaurant")
     _mirror_to_postgres(dims["driver"], "gold.dim_driver")
     _mirror_to_postgres(dims["menu_item"], "gold.dim_menu_item")
-    _mirror_to_postgres(fact_orders, "gold.fact_orders")
-    _mirror_to_postgres(fact_events, "gold.fact_delivery_events")
+    _mirror_to_postgres(facts["orders"], "gold.fact_orders")
+    _mirror_to_postgres(facts["delivery_events"], "gold.fact_delivery_events")
+    _mirror_to_postgres(facts["order_items"], "gold.fact_order_items")
 
     print(">>> Hoàn tất DP2 build.", flush=True)
     spark.stop()

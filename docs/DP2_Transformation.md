@@ -69,18 +69,19 @@ Số dòng các chiều: `dim_customer` 120.000, `dim_restaurant` 8.000, `dim_dr
 
 `dim_menu_item` đọc bằng `mergeSchema` nên có đủ cột `spice_level` từ các phân vùng v2 (xử lý schema evolution đã nêu ở Phase 4).
 
-### 3.2. Hai bảng sự kiện
+### 3.2. Ba bảng sự kiện
 
-`fact_orders` và `fact_delivery_events` tham chiếu tới chiều qua **khoá thay thế** của phiên bản hiện hành (nối lúc dựng). Quan hệ được đóng thành **khoá ngoại thật** trong bản Postgres:
+`fact_orders`, `fact_delivery_events` và `fact_order_items` tham chiếu tới chiều qua **khoá thay thế** của phiên bản hiện hành (nối lúc dựng). `fact_order_items` (6,25 triệu dòng chi tiết món) là bảng khiến `dim_menu_item` có mặt trong sơ đồ sao. Quan hệ được đóng thành **khoá ngoại thật** trong bản Postgres:
 
 ```
-fact_orders.customer_sk    → dim_customer.customer_sk
-fact_orders.restaurant_sk  → dim_restaurant.restaurant_sk
-fact_orders.driver_sk      → dim_driver.driver_sk     (NULL với đơn chưa gán tài xế)
+fact_orders.customer_sk       → dim_customer.customer_sk
+fact_orders.restaurant_sk     → dim_restaurant.restaurant_sk
+fact_orders.driver_sk         → dim_driver.driver_sk     (NULL với đơn chưa gán tài xế)
 fact_delivery_events.driver_sk → dim_driver.driver_sk
+fact_order_items.menu_item_sk → dim_menu_item.menu_item_sk
 ```
 
-Gắn được toàn bộ 6 khoá chính + 4 khoá ngoại mà không vi phạm ràng buộc nào — xác nhận mô hình hình sao toàn vẹn tham chiếu.
+Gắn được toàn bộ 7 khoá chính + 5 khoá ngoại mà không vi phạm ràng buộc nào — xác nhận mô hình hình sao toàn vẹn tham chiếu, mọi bảng chiều đều nối vào ít nhất một fact.
 
 ### 3.3. Truy vấn hình sao trên lakehouse (Trino)
 
