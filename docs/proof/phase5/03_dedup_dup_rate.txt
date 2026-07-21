@@ -1,0 +1,14 @@
+Bằng chứng khử trùng — đối chiếu sự thật trong gps-topic.
+Đếm trực tiếp trên Kafka (không phụ thuộc metrics Flink):
+
+  tổng message trong topic : 729.375
+  event_id duy nhất        : 718.578
+  bản trùng                :  10.797   (1,50%)
+
+Toán tử DedupByEventId (KeyedProcessFunction + ValueState, keyBy event_id)
+cho qua sự kiện đầu tiên của mỗi event_id và loại các bản gửi lại. Tỷ lệ
+1,50% khớp chính xác streaming.duplicate.rate trong generator.yaml.
+
+Cách đếm lại:
+  kafka-console-consumer --topic gps-topic --from-beginning \
+    | tee >(wc -l) | grep -oE '"event_id": "[^"]+"' | sort -u | wc -l

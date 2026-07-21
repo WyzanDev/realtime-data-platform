@@ -1,0 +1,14 @@
+So sánh chiến lược watermark — tác động của dung sai đến muộn
+(bounded-out-of-orderness). Cùng dữ liệu gps-topic, cùng độ song song 6,
+không khử trùng; chỉ khác mức dung sai watermark.
+
+  Dung sai watermark     Cửa sổ tạo ra     Tổng ping giữ lại
+  ------------------     -------------     -----------------
+  0 phút  (baseline)          1.072              7.347
+  5 phút                      2.560             17.958
+  ------------------     -------------     -----------------
+  Chênh lệch                  +139%             +144% (2,4x)
+
+Watermark bám sát (0 phút) loại phần lớn sự kiện lệch thứ tự trước khi vào
+cửa sổ. Nới lên 5 phút giữ lại gấp 2,4 lần số ping — bằng chứng đo được cho
+kỹ thuật WatermarkStrategy.for_bounded_out_of_orderness.

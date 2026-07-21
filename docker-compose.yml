@@ -233,8 +233,15 @@ services:
         depends_on:
             - spark-master
 
+    # Image tự dựng project-flink:1.18 = flink 1.18 + PyFlink + kafka connector.
+    # Job DataStream viết bằng Python cần PyFlink có mặt ở CẢ JobManager (biên
+    # dịch đồ thị) lẫn TaskManager (chạy toán tử Python), nên cả hai dùng chung
+    # image này.
     flink-jobmanager:
-        image: flink:1.18-scala_2.12
+        image: project-flink:1.18
+        build:
+            context: .
+            dockerfile: docker/flink/Dockerfile
         container_name: flink-jobmanager
         command: jobmanager
         restart: unless-stopped
@@ -247,7 +254,10 @@ services:
         volumes:
             - ./jobs/flink:/opt/flink-jobs
     flink-taskmanager:
-        image: flink:1.18-scala_2.12
+        image: project-flink:1.18
+        build:
+            context: .
+            dockerfile: docker/flink/Dockerfile
         container_name: flink-taskmanager
         command: taskmanager
         restart: unless-stopped
@@ -255,7 +265,10 @@ services:
             - |
               FLINK_PROPERTIES=
               jobmanager.rpc.address: flink-jobmanager
-              taskmanager.numberOfTaskSlots: 4
+              taskmanager.numberOfTaskSlots: 6
+              taskmanager.memory.process.size: 4096m
+              taskmanager.memory.framework.off-heap.size: 512m
+              taskmanager.memory.task.off-heap.size: 256m
         volumes:
             - ./jobs/flink:/opt/flink-jobs
         depends_on:

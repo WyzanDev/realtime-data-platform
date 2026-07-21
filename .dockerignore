@@ -13,8 +13,12 @@
 
 # Dữ liệu đã sinh, hàng trăm megabyte
 output/
+output_docker/
 data/
 *.parquet
+
+# Nhật ký sự kiện Spark (một số tệp thuộc UID trong container, daemon không đọc được)
+spark-events/
 
 # Thông tin nhạy cảm
 .env
