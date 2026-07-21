@@ -1,0 +1,20 @@
+Phase 7 — Truy vấn lakehouse qua Trino (Silver/Gold dạng Delta trên MinIO).
+
+=== Các bảng Gold trong catalog delta (Trino đọc Delta qua Hive Metastore) ===
+"dim_customer"
+"dim_driver"
+"dim_menu_item"
+"dim_restaurant"
+"fact_delivery_events"
+"fact_orders"
+
+=== Bất biến SCD2 dim_customer: tổng = số sk phân biệt = số is_current ===
+"120000","120000","120000"
+
+=== Star query: fact_orders JOIN dim_customer theo customer_sk (chạy trên lakehouse) ===
+"Ho Chi Minh","1120603"
+"Ha Noi","755527"
+"Da Nang","251394"
+"Hai Phong","101646"
+"Can Tho","85702"
+"Bien Hoa","76626"

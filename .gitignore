@@ -8,3 +8,6 @@ output_docker/
 
 # Spark event logs for History Server (regenerated at runtime)
 /spark-events/
+
+# Jar tải về cho Hive Metastore (aws-sdk 280MB) — lấy lại bằng script, không commit
+docker/hive/*.jar

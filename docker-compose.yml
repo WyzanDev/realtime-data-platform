@@ -273,6 +273,47 @@ services:
             - ./jobs/flink:/opt/flink-jobs
         depends_on:
             - flink-jobmanager
+
+    #==================== LAKEHOUSE QUERY ENGINE (Phase 7) ====================
+    # Hive Metastore: chỉ lưu metadata bảng (schema, đường dẫn s3a://...) trong
+    # PostgreSQL. Nó KHÔNG đọc dữ liệu trên MinIO — Spark ghi và Trino đọc mới
+    # chạm S3. Nhờ vậy Spark (ghi Delta) và Trino (đọc) dùng chung một danh mục.
+    hive-metastore:
+        image: apache/hive:4.0.0
+        container_name: hive-metastore
+        restart: unless-stopped
+        environment:
+            - SERVICE_NAME=metastore
+            - DB_DRIVER=postgres
+            - SERVICE_OPTS=-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore -Djavax.jdo.option.ConnectionUserName=admin -Djavax.jdo.option.ConnectionPassword=admin711
+        ports:
+            - "9083:9083"
+        volumes:
+            - ./docker/hive/postgresql.jar:/opt/hive/lib/postgresql.jar
+            # HMS cần S3A để tạo/kiểm tra thư mục database có location trên
+            # MinIO khi Spark tạo bảng.
+            - ./docker/hive/hadoop-aws-3.3.4.jar:/opt/hive/lib/hadoop-aws-3.3.4.jar
+            - ./docker/hive/aws-java-sdk-bundle-1.12.262.jar:/opt/hive/lib/aws-java-sdk-bundle-1.12.262.jar
+            - ./docker/hive/core-site.xml:/opt/hive/conf/core-site.xml
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    # Trino: công cụ truy vấn SQL trên lakehouse. DBeaver kết nối vào đây để xem
+    # và truy vấn cả Delta trên MinIO (catalog delta) lẫn bản mirror trong
+    # PostgreSQL (catalog postgres) qua cùng một giao diện.
+    trino:
+        image: trinodb/trino:435
+        container_name: trino
+        restart: unless-stopped
+        ports:
+            - "8085:8080" # Trino Web UI + JDBC
+        volumes:
+            - ./docker/trino/catalog:/etc/trino/catalog
+            - ./docker/trino/config.properties:/etc/trino/config.properties
+            - ./docker/trino/jvm.config:/etc/trino/jvm.config
+        depends_on:
+            - hive-metastore
 volumes:
     postgres_data:
     minio_data:
