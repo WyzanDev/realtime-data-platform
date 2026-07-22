@@ -113,7 +113,7 @@ services:
         container_name: kafka-ui
         restart: unless-stopped
         ports:
-            - "8085:8080"
+            - "8086:8080" # tránh trùng cổng 8085 của Trino
         environment:
             - KAFKA_CLUSTERS_0_NAME=local
             - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
