@@ -25,6 +25,8 @@ docs/StorageOptimization.md.
 
 from __future__ import annotations
 
+import os
+
 from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 
@@ -75,8 +77,51 @@ def _timed_query(spark, label: str) -> None:
     print(f"  [{label}] số dòng khớp: {n:,} | số tệp bảng: {_count_files(spark):,}", flush=True)
 
 
+def _step_write(spark) -> None:
+    """Ghi bảng Delta thành nhiều tệp nhỏ và đo truy vấn TRƯỚC tối ưu.
+
+    Dừng ngay sau bước này (khi STEP=write) để kịp chụp trạng thái
+    ~200 tệp nhỏ trên MinIO console trước khi OPTIMIZE gộp lại.
+    """
+    orders = read_bronze(spark, "raw_orders").select(
+        "order_id", "delivery_city", "restaurant_id", "total_amount", "order_time", "status"
+    )
+    with timed(f"ghi Delta thành {N_SMALL_FILES} tệp nhỏ"):
+        orders.repartition(N_SMALL_FILES).write.format("delta").mode("overwrite").save(
+            DELTA_PATH
+        )
+    print("\n========== TRƯỚC TỐI ƯU ==========", flush=True)
+    _timed_query(spark, "trước")
+
+
+def _step_optimize(spark) -> None:
+    """Chạy OPTIMIZE + ZORDER rồi VACUUM để xoá hẳn tệp cũ, đo truy vấn SAU.
+
+    VACUUM RETAIN 0 HOURS dọn các tệp nhỏ đã bị compaction thay thế, để ảnh
+    chụp MinIO sau tối ưu chỉ còn đúng tệp lớn (không lẫn tệp cũ của Delta).
+    """
+    with timed("OPTIMIZE + ZORDER BY (delivery_city, restaurant_id)"):
+        DeltaTable.forPath(spark, DELTA_PATH).optimize().executeZOrderBy(
+            "delivery_city", "restaurant_id"
+        )
+    # Xoá tệp cũ đã bị thay thế để ảnh "sau" trên MinIO sạch còn 1 tệp.
+    spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", "false")
+    with timed("VACUUM RETAIN 0 HOURS (dọn tệp cũ)"):
+        DeltaTable.forPath(spark, DELTA_PATH).vacuum(0)
+
+    print("\n========== SAU TỐI ƯU ==========", flush=True)
+    _timed_query(spark, "sau")
+
+
 def main() -> None:
-    """Dựng bảng Delta nhiều tệp nhỏ, đo, OPTIMIZE ZORDER, đo lại."""
+    """Dựng bảng Delta nhiều tệp nhỏ, đo, OPTIMIZE ZORDER, đo lại.
+
+    Biến môi trường STEP điều khiển bước chạy để chụp proof trước/sau:
+      - STEP=write     : chỉ ghi 200 tệp nhỏ rồi dừng (chụp ảnh "trước").
+      - STEP=optimize  : chỉ OPTIMIZE+ZORDER+VACUUM rồi dừng (chụp ảnh "sau").
+      - không set (mặc định): chạy trọn cả hai (giữ nguyên hành vi cũ).
+    """
+    step = os.environ.get("STEP", "all").lower()
     spark = build_spark(
         "phase6_lakehouse_delta",
         extra_conf={
@@ -87,27 +132,10 @@ def main() -> None:
         },
     )
 
-    orders = read_bronze(spark, "raw_orders").select(
-        "order_id", "delivery_city", "restaurant_id", "total_amount", "order_time", "status"
-    )
-
-    # --- Ghi bảng Delta thành nhiều tệp nhỏ (mô phỏng ghi luồng) ---
-    with timed(f"ghi Delta thành {N_SMALL_FILES} tệp nhỏ"):
-        orders.repartition(N_SMALL_FILES).write.format("delta").mode("overwrite").save(
-            DELTA_PATH
-        )
-
-    print("\n========== TRƯỚC TỐI ƯU ==========", flush=True)
-    _timed_query(spark, "trước")
-
-    # --- Compaction + Z-order ---
-    with timed("OPTIMIZE + ZORDER BY (delivery_city, restaurant_id)"):
-        DeltaTable.forPath(spark, DELTA_PATH).optimize().executeZOrderBy(
-            "delivery_city", "restaurant_id"
-        )
-
-    print("\n========== SAU TỐI ƯU ==========", flush=True)
-    _timed_query(spark, "sau")
+    if step in ("write", "all"):
+        _step_write(spark)
+    if step in ("optimize", "all"):
+        _step_optimize(spark)
 
     spark.stop()
 
