@@ -1,0 +1,11 @@
+Phase 6 — Datawarehouse (PostgreSQL): indexing. Trích EXPLAIN ANALYZE thật.
+Script: jobs/dwh/dwh_indexing.py, bảng public.dwh_orders (800.000 đơn).
+Truy vấn: lọc delivery_city='Ho Chi Minh' AND order_time trong khung trưa 2026-02-10.
+
+----- TRƯỚC (chưa có chỉ mục) -----
+  Kiểu quét : ->  Parallel Seq Scan on dwh_orders  (cost=0.00..15240.33 rows=324 width=8) (actual time=9.003..25.274 rows=460 loops=3)
+  Execution Time: 29.790 ms
+Đã tạo chỉ mục (delivery_city, order_time).
+----- SAU (đã có chỉ mục) -----
+  Kiểu quét : ->  Bitmap Heap Scan on dwh_orders  (cost=9.74..1394.13 rows=417 width=8) (actual time=0.122..1.112 rows=1379 loops=1)
+  Execution Time: 1.255 ms

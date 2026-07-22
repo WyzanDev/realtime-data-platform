@@ -1,0 +1,20 @@
+[2026-07-20T19:26:49.225+0000] {validate.py:379} INFO - TỔNG HỢP KIỂM TRA CHẤT LƯỢNG TẦNG BRONZE
+[2026-07-20T19:26:49.225+0000] {validate.py:380} INFO - ========================================================================
+[2026-07-20T19:26:49.225+0000] {validate.py:381} INFO - Bảng                        Số dòng   Số cột        Đạt   Cảnh báo
+[2026-07-20T19:26:49.225+0000] {validate.py:382} INFO - ------------------------------------------------------------------------
+[2026-07-20T19:26:49.225+0000] {validate.py:384} INFO - raw_orders                2,550,000       18       4/4          0
+[2026-07-20T19:26:49.225+0000] {validate.py:384} INFO - raw_order_items           6,250,053       10       4/4          0
+[2026-07-20T19:26:49.225+0000] {validate.py:384} INFO - raw_menu_items               45,000       11       4/4          0
+[2026-07-20T19:26:49.225+0000] {validate.py:384} INFO - raw_reviews                 637,574       11       4/4          0
+[2026-07-20T19:26:49.225+0000] {validate.py:384} INFO - raw_customers               120,000       12       4/4          0
+[2026-07-20T19:26:49.226+0000] {validate.py:384} INFO - raw_restaurants               8,000       13       4/4          0
+[2026-07-20T19:26:49.226+0000] {validate.py:384} INFO - raw_drivers                   5,000       11       4/4          0
+[2026-07-20T19:26:49.226+0000] {validate.py:384} INFO - raw_delivery_events         200,000       15       4/4          0
+[2026-07-20T19:26:49.226+0000] {validate.py:393} INFO - ------------------------------------------------------------------------
+[2026-07-20T19:26:49.226+0000] {validate.py:394} INFO - Tổng cộng: 9,815,627 dòng trên 8 bảng, 0 cảnh báo
+[2026-07-20T19:26:49.226+0000] {python.py:237} INFO - Done. Returned value was: {'tables': 8, 'total_rows': 9815627, 'total_warnings': 0}
+[2026-07-20T19:26:49.226+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2026-07-20T19:26:49.242+0000] {taskinstance.py:1206} INFO - Marking task as SUCCESS. dag_id=dp1_ingest_bronze, task_id=validate_stage.validation_summary, run_id=manual__2026-07-20T19:26:15+00:00, execution_date=20260720T192615, start_date=20260720T192649, end_date=20260720T192649
+[2026-07-20T19:26:49.283+0000] {local_task_job_runner.py:243} INFO - Task exited with return code 0
+[2026-07-20T19:26:49.295+0000] {taskinstance.py:3503} INFO - 0 downstream tasks scheduled from follow-on schedule check
+[2026-07-20T19:26:49.296+0000] {local_task_job_runner.py:222} INFO - ::endgroup::

@@ -1,0 +1,7 @@
+dp3_compute_features | dp3_proof_1784671633                 | success | 2026-07-21T22:07:16+00:00 | 2026-07-21T22:08:17.765334+00:00 | 2026-07-21T22:09:20.236150+00:00
+dag_id               | execution_date            | task_id                          | state   | start_date                       | end_date                        
+dp3_compute_features | 2026-07-21T22:07:16+00:00 | start                            | success | 2026-07-21T22:08:17.780785+00:00 | 2026-07-21T22:08:17.780787+00:00
+dp3_compute_features | 2026-07-21T22:07:16+00:00 | ingest_stage.build_features      | success | 2026-07-21T22:08:19.995452+00:00 | 2026-07-21T22:09:11.713400+00:00
+dp3_compute_features | 2026-07-21T22:07:16+00:00 | ingest_stage.refresh_trino       | success | 2026-07-21T22:09:13.078224+00:00 | 2026-07-21T22:09:17.126494+00:00
+dp3_compute_features | 2026-07-21T22:07:16+00:00 | validate_stage.validate_features | success | 2026-07-21T22:09:18.516376+00:00 | 2026-07-21T22:09:18.742185+00:00
+dp3_compute_features | 2026-07-21T22:07:16+00:00 | end                              | success | 2026-07-21T22:09:19.178822+00:00 | 2026-07-21T22:09:19.178824+00:00

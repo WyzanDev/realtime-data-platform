@@ -1,0 +1,64 @@
+# =============================================================================
+# .dockerignore — loại trừ tệp không cần đưa vào ngữ cảnh dựng ảnh
+# =============================================================================
+#
+# Mọi tệp trong thư mục dự án đều được gửi tới Docker daemon trước khi bắt đầu
+# dựng, kể cả những tệp không hề xuất hiện trong lệnh COPY. Không loại trừ thì
+# riêng thư mục output đã hơn 300 MB, làm bước dựng chậm hẳn dù dung lượng ảnh
+# cuối cùng không đổi.
+#
+# Ngoài tốc độ, đây còn là vấn đề an toàn: tệp .env chứa mật khẩu tuyệt đối
+# không được lọt vào ngữ cảnh dựng.
+# =============================================================================
+
+# Dữ liệu đã sinh, hàng trăm megabyte
+output/
+output_docker/
+data/
+*.parquet
+
+# Nhật ký sự kiện Spark (một số tệp thuộc UID trong container, daemon không đọc được)
+spark-events/
+
+# Thông tin nhạy cảm
+.env
+*.pem
+*.key
+
+# Môi trường ảo Python trên máy phát triển
+.venv/
+venv/
+env/
+
+# Tệp tạm của Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Lịch sử phiên bản
+.git/
+.gitignore
+.github/
+
+# Tài liệu và bằng chứng, không cần lúc chạy
+docs/
+*.md
+!README.md
+
+# Cấu hình biên tập viên
+.vscode/
+.idea/
+*.swp
+
+# Nhật ký và tệp tạm
+*.log
+logs/
+tmp/
+.DS_Store
+
+# Định nghĩa hạ tầng, không thuộc về ảnh của ứng dụng
+docker-compose.yml
+dags/
+jobs/

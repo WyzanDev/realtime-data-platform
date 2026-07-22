@@ -1,0 +1,24 @@
+Phase 8 — Bảng feature (DP3), mỗi bảng có event_timestamp + created (chuẩn Feast).
+Ngày mốc (event_timestamp) = 2026-07-18 23:59:00 (đơn mới nhất trong kho).
+
+=== Số dòng 3 bảng feature ===
+ feat_customer_order_freq_7d       | 63937
+ feat_restaurant_avg_prep_time_30d |  7998
+ feat_driver_acceptance_rate_7d    |  5000
+
+=== Cấu trúc feat_customer_order_freq_7d (đủ 2 cột Feast) ===
+                    Table "gold.feat_customer_order_freq_7d"
+ customer_id     | text                        |           |          | 
+ order_freq_7d   | bigint                      |           | not null | 
+ event_timestamp | timestamp without time zone |           | not null | 
+ created         | timestamp without time zone |           | not null | 
+=== Mẫu giá trị: feat_driver_acceptance_rate_7d ===
+ driver_id | acceptance_rate_7d | orders_7d |   event_timestamp   |          created           
+-----------+--------------------+-----------+---------------------+----------------------------
+ DRV003485 |             0.9459 |        37 | 2026-07-18 23:59:00 | 2026-07-21 22:06:00.139681
+ DRV002219 |             0.8571 |        35 | 2026-07-18 23:59:00 | 2026-07-21 22:06:00.139681
+ DRV002914 |             0.8235 |        34 | 2026-07-18 23:59:00 | 2026-07-21 22:06:00.139681
+ DRV002498 |             0.9706 |        34 | 2026-07-18 23:59:00 | 2026-07-21 22:06:00.139681
+ DRV001531 |             0.9118 |        34 | 2026-07-18 23:59:00 | 2026-07-21 22:06:00.139681
+(5 rows)
+

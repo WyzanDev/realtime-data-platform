@@ -1,6 +1,9 @@
 #======================== AIRFLOW ===========================
 x-airflow-common: &airflow-common
-    image: apache/airflow:2.9.3
+    image: project-airflow:2.9.3
+    build:
+        context: .
+        dockerfile: docker/airflow/Dockerfile
     environment:
         - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
         - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${AIRFLOW_DB}
@@ -11,7 +14,6 @@ x-airflow-common: &airflow-common
         - AIRFLOW_CONN_POSTGRES_WAREHOUSE=${AIRFLOW_CONN_POSTGRES_WAREHOUSE}
         - AIRFLOW_CONN_KAFKA=${AIRFLOW_CONN_KAFKA}
         - AIRFLOW_CONN_MINIO_S3=${AIRFLOW_CONN_MINIO_S3}
-        - _PIP_ADDITIONAL_REQUIREMENTS=apache-airflow-providers-apache-kafka==1.4.0
     volumes:
         - ./dags:/opt/airflow/dags
         - airflow_logs:/opt/airflow/logs
@@ -111,7 +113,7 @@ services:
         container_name: kafka-ui
         restart: unless-stopped
         ports:
-            - "8085:8080"
+            - "8086:8080" # tránh trùng cổng 8085 của Trino
         environment:
             - KAFKA_CLUSTERS_0_NAME=local
             - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
@@ -159,11 +161,159 @@ services:
         container_name: airflow-worker
         restart: unless-stopped
         command: celery worker
+        # Task của luồng Spark gọi `docker exec spark-master ...` nên worker
+        # cần nói chuyện với docker daemon của host qua socket. Phải liệt kê
+        # lại các volume của airflow-common vì phép merge anchor ghi đè key
+        # `volumes` chứ không gộp.
+        volumes:
+            - ./dags:/opt/airflow/dags
+            - airflow_logs:/opt/airflow/logs
+            - /var/run/docker.sock:/var/run/docker.sock
+        # gid 115 là group `docker` trên host; thêm vào để tiến trình worker
+        # (uid 50000) có quyền đọc ghi socket. Giá trị này phụ thuộc máy host
+        # — kiểm tra bằng `getent group docker` và chỉnh nếu khác.
+        group_add:
+            - "115"
         depends_on:
             <<: *airflow-common-depends-on
             airflow-init:
                 condition: service_completed_successfully
 
+    #======================== SPARK ===========================
+    spark-master:
+        image: bitnamilegacy/spark:3.5
+        container_name: spark-master
+        restart: unless-stopped
+        environment:
+            - SPARK_MODE=master
+        ports:
+            - "8081:8080" # Spark Web UI
+            - "7077:7077" # Cổng submit jobs
+        volumes:
+            - ./jobs/spark:/opt/spark-jobs
+            # Driver ghi nhật ký sự kiện của mỗi lần chạy vào đây, để Spark
+            # History Server đọc lại. Nhờ vậy vẫn xem được sơ đồ stage/task
+            # của job ĐÃ CHẠY XONG — điều Spark UI của master không giữ.
+            - ./spark-events:/opt/spark-events
+    spark-worker:
+        image: bitnamilegacy/spark:3.5
+        container_name: spark-worker
+        restart: unless-stopped
+        environment:
+            - SPARK_MODE=worker
+            - SPARK_MASTER_URL=spark://spark-master:7077
+            # Cấp 6 nhân / 4 GB (host có 8 nhân / 11 GB). Cần đủ nhân thật để
+            # minh hoạ skew cho trung thực: một task straggler ôm 44% dữ liệu
+            # khiến các nhân còn lại ngồi không, và salting mới cho thấy lợi
+            # ích rõ khi rải tải ra nhiều nhân.
+            - SPARK_WORKER_MEMORY=4G
+            - SPARK_WORKER_CORES=6
+        depends_on:
+            - spark-master
+        volumes:
+            - ./jobs/spark:/opt/spark-jobs
+
+    # History Server đọc nhật ký sự kiện mà các driver đã ghi, dựng lại giao
+    # diện Spark UI cho những job đã kết thúc. Đây là nơi chụp màn hình bằng
+    # chứng skew (task lệch) và cải thiện sau tối ưu, vì job Phase 4 chạy
+    # nhanh, không kịp mở UI trực tiếp lúc đang chạy.
+    spark-history:
+        image: bitnamilegacy/spark:3.5
+        container_name: spark-history
+        restart: unless-stopped
+        environment:
+            # Trỏ History Server tới thư mục nhật ký sự kiện mà driver ghi ra.
+            - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=file:/opt/spark-events
+        # Chạy thẳng lớp HistoryServer ở tiền cảnh để container sống cùng nó.
+        command: /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+        ports:
+            - "18080:18080" # Spark History Server UI
+        volumes:
+            - ./spark-events:/opt/spark-events
+        depends_on:
+            - spark-master
+
+    # Image tự dựng project-flink:1.18 = flink 1.18 + PyFlink + kafka connector.
+    # Job DataStream viết bằng Python cần PyFlink có mặt ở CẢ JobManager (biên
+    # dịch đồ thị) lẫn TaskManager (chạy toán tử Python), nên cả hai dùng chung
+    # image này.
+    flink-jobmanager:
+        image: project-flink:1.18
+        build:
+            context: .
+            dockerfile: docker/flink/Dockerfile
+        container_name: flink-jobmanager
+        command: jobmanager
+        restart: unless-stopped
+        environment:
+            - |
+              FLINK_PROPERTIES=
+              jobmanager.rpc.address: flink-jobmanager
+        ports:
+            - "8082:8081" # Flink Web UI
+        volumes:
+            - ./jobs/flink:/opt/flink-jobs
+    flink-taskmanager:
+        image: project-flink:1.18
+        build:
+            context: .
+            dockerfile: docker/flink/Dockerfile
+        container_name: flink-taskmanager
+        command: taskmanager
+        restart: unless-stopped
+        environment:
+            - |
+              FLINK_PROPERTIES=
+              jobmanager.rpc.address: flink-jobmanager
+              taskmanager.numberOfTaskSlots: 6
+              taskmanager.memory.process.size: 4096m
+              taskmanager.memory.framework.off-heap.size: 512m
+              taskmanager.memory.task.off-heap.size: 256m
+        volumes:
+            - ./jobs/flink:/opt/flink-jobs
+        depends_on:
+            - flink-jobmanager
+
+    #==================== LAKEHOUSE QUERY ENGINE (Phase 7) ====================
+    # Hive Metastore: chỉ lưu metadata bảng (schema, đường dẫn s3a://...) trong
+    # PostgreSQL. Nó KHÔNG đọc dữ liệu trên MinIO — Spark ghi và Trino đọc mới
+    # chạm S3. Nhờ vậy Spark (ghi Delta) và Trino (đọc) dùng chung một danh mục.
+    hive-metastore:
+        image: apache/hive:4.0.0
+        container_name: hive-metastore
+        restart: unless-stopped
+        environment:
+            - SERVICE_NAME=metastore
+            - DB_DRIVER=postgres
+            - SERVICE_OPTS=-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore -Djavax.jdo.option.ConnectionUserName=admin -Djavax.jdo.option.ConnectionPassword=admin711
+        ports:
+            - "9083:9083"
+        volumes:
+            - ./docker/hive/postgresql.jar:/opt/hive/lib/postgresql.jar
+            # HMS cần S3A để tạo/kiểm tra thư mục database có location trên
+            # MinIO khi Spark tạo bảng.
+            - ./docker/hive/hadoop-aws-3.3.4.jar:/opt/hive/lib/hadoop-aws-3.3.4.jar
+            - ./docker/hive/aws-java-sdk-bundle-1.12.262.jar:/opt/hive/lib/aws-java-sdk-bundle-1.12.262.jar
+            - ./docker/hive/core-site.xml:/opt/hive/conf/core-site.xml
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    # Trino: công cụ truy vấn SQL trên lakehouse. DBeaver kết nối vào đây để xem
+    # và truy vấn cả Delta trên MinIO (catalog delta) lẫn bản mirror trong
+    # PostgreSQL (catalog postgres) qua cùng một giao diện.
+    trino:
+        image: trinodb/trino:435
+        container_name: trino
+        restart: unless-stopped
+        ports:
+            - "8085:8080" # Trino Web UI + JDBC
+        volumes:
+            - ./docker/trino/catalog:/etc/trino/catalog
+            - ./docker/trino/config.properties:/etc/trino/config.properties
+            - ./docker/trino/jvm.config:/etc/trino/jvm.config
+        depends_on:
+            - hive-metastore
 volumes:
     postgres_data:
     minio_data:

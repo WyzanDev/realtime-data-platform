@@ -1,0 +1,41 @@
+Bảng thời gian chạy baseline vs tối ưu của bốn Spark job Phase 4.
+Cụm: 1 worker, 6 nhân / 4 GB. Dữ liệu Bronze đọc từ MinIO qua S3A.
+Mọi số đo ở trạng thái cache nóng (đã chạy làm nóng trước khi đo).
+
+====================================================================
+1) SKEW — job_skew.py  (sort-merge join theo delivery_city)
+====================================================================
+  baseline               wall = 60,8 giây   | task chậm nhất = 52,4 giây
+  salted (N=24)          wall = 55,9 giây   | task chậm nhất = 17,2 giây
+  → straggler giảm ~3,0×. Chi tiết phân bố task: 03_skew_task_distribution.txt
+
+====================================================================
+2) HIGH CARDINALITY — job_cardinality.py
+====================================================================
+  Đếm phân biệt:
+    baseline  countDistinct chính xác   = 14,5 giây
+    optimized approx_count_distinct HLL =  8,2 giây   (~1,8× nhanh hơn)
+      customers  120.000 -> 127.179  (+6,0%)
+      restaurants  8.000 ->   8.115  (+1,4%)
+      menu_items  45.000 ->  43.833  (-2,6%)
+  Join order_items (6,25 triệu) x menu_items (45 nghìn):
+    baseline  sort-merge join = 11,8 giây   (shuffle bảng lớn)
+    optimized broadcast join  =  8,1 giây   (không shuffle bảng lớn)
+
+====================================================================
+3) SCHEMA EVOLUTION — job_schema_evolution.py  (raw_menu_items)
+====================================================================
+  baseline (KHÔNG mergeSchema) = 11,4 giây
+     -> cột spice_level bị BỎ QUA âm thầm, mất toàn bộ dữ liệu độ cay
+  merged  (CÓ mergeSchema)     = 17,4 giây
+     -> 45.000 dòng, giữ đủ cột
+        dòng lược đồ cũ (điền -1)            = 20.143
+        null hợp lệ ở phân vùng mới (không cay) =  9.037
+
+====================================================================
+4) DUPLICATE — job_dedup.py  (raw_orders)
+====================================================================
+  baseline (đo mức trùng) = 9,6 giây
+     Tổng 2.550.000 | phân biệt 2.500.000 | trùng 50.000 (2,00%)
+  dedup (row_number theo ingested_at desc) = 27,3 giây
+     Trước 2.550.000 -> Sau 2.500.000 | loại đúng 50.000 bản trùng

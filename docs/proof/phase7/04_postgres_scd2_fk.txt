@@ -1,0 +1,26 @@
+Phase 7 — Mô hình Gold trong PostgreSQL (bản mirror cho ERD DBeaver).
+
+=== Cột SCD2 trên dim_customer ===
+ customer_id   | text                        |           |          | 
+ customer_sk   | bigint                      |           | not null | 
+ valid_from_ts | timestamp without time zone |           | not null | 
+ valid_to_ts   | timestamp without time zone |           |          | 
+ is_current    | boolean                     |           | not null | 
+    "dim_customer_pkey" PRIMARY KEY, btree (customer_sk)
+    TABLE "gold.fact_orders" CONSTRAINT "fk_orders_customer" FOREIGN KEY (customer_sk) REFERENCES gold.dim_customer(customer_sk)
+
+=== Khoá chính + khoá ngoại (quan hệ dim-fact cho ERD) ===
+          conname          | contype |            tbl            |         ref         
+---------------------------+---------+---------------------------+---------------------
+ dim_customer_pkey         | p       | gold.dim_customer         | -
+ dim_restaurant_pkey       | p       | gold.dim_restaurant       | -
+ dim_driver_pkey           | p       | gold.dim_driver           | -
+ dim_menu_item_pkey        | p       | gold.dim_menu_item        | -
+ fact_orders_pkey          | p       | gold.fact_orders          | -
+ fact_delivery_events_pkey | p       | gold.fact_delivery_events | -
+ fk_orders_customer        | f       | gold.fact_orders          | gold.dim_customer
+ fk_orders_restaurant      | f       | gold.fact_orders          | gold.dim_restaurant
+ fk_orders_driver          | f       | gold.fact_orders          | gold.dim_driver
+ fk_events_driver          | f       | gold.fact_delivery_events | gold.dim_driver
+(10 rows)
+

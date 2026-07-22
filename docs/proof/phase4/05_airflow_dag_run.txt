@@ -1,0 +1,14 @@
+Kết quả chạy DAG spark_offline_processing trên Airflow (CeleryExecutor).
+Run ID: phase4_proof_1784629363
+
+=== Tổng quan lượt chạy ===
+dag_id                   | run_id                               | state   | execution_date            | start_date                       | end_date                        
+spark_offline_processing | phase4_proof_1784629363              | success | 2026-07-21T10:22:47+00:00 | 2026-07-21T10:26:03.325707+00:00 | 2026-07-21T10:29:23.824563+00:00
+
+=== Trạng thái từng task ===
+dag_id                   | execution_date            | task_id             | state   | start_date                       | end_date                        
+spark_offline_processing | 2026-07-21T10:22:47+00:00 | process_skew        | success | 2026-07-21T10:26:51.154462+00:00 | 2026-07-21T10:28:09.336476+00:00
+spark_offline_processing | 2026-07-21T10:22:47+00:00 | end                 | success | 2026-07-21T10:29:22.765682+00:00 | 2026-07-21T10:29:22.765684+00:00
+spark_offline_processing | 2026-07-21T10:22:47+00:00 | resolve_schema      | success | 2026-07-21T10:28:55.813260+00:00 | 2026-07-21T10:29:22.385807+00:00
+spark_offline_processing | 2026-07-21T10:22:47+00:00 | dedup_orders        | success | 2026-07-21T10:26:04.866746+00:00 | 2026-07-21T10:26:50.380456+00:00
+spark_offline_processing | 2026-07-21T10:22:47+00:00 | process_cardinality | success | 2026-07-21T10:28:09.930269+00:00 | 2026-07-21T10:28:54.705209+00:00

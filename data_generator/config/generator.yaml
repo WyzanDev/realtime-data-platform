@@ -1,0 +1,162 @@
+# ============================================================
+# Generator config - Food Delivery data platform
+# Moi tham so sinh du lieu tap trung o day, code khong hardcode.
+# ============================================================
+
+meta:
+  seed: 42
+  timezone: "Asia/Ho_Chi_Minh"
+  days_history: 180
+  start_date: "2026-01-20"
+
+volume:
+  n_customers: 120000
+  n_restaurants: 8000
+  n_menu_items: 45000
+  n_drivers: 5000
+  n_orders: 2500000
+  items_per_order: [1, 4]
+  review_rate: 0.30
+
+skew:
+  city:
+    "Ho Chi Minh": 0.45
+    "Ha Noi": 0.30
+    "Da Nang": 0.10
+    "Hai Phong": 0.04
+    "Can Tho": 0.035
+    "Bien Hoa": 0.03
+    "Nha Trang": 0.025
+    "Hue": 0.02
+  category:
+    "Com": 0.30
+    "Tra sua": 0.25
+    "Bun - Pho": 0.15
+    "Do an nhanh": 0.10
+    "Lau - Nuong": 0.08
+    "Banh mi": 0.06
+    "Che - Trang mieng": 0.04
+    "Do chay": 0.02
+  hour_of_day:
+    peak_lunch:  {hours: [11, 12, 13], weight: 0.32}
+    peak_dinner: {hours: [18, 19, 20], weight: 0.30}
+    normal:      {weight: 0.38}
+  customer_segment:
+    new: 0.35
+    regular: 0.50
+    vip: 0.15
+  vip_order_multiplier: 2.5
+
+enums:
+  vehicle_type:
+    motorbike_gas: 0.78
+    motorbike_electric: 0.20
+    car: 0.02
+  speed_factor:
+    motorbike_gas: 1.00
+    motorbike_electric: 1.08
+    car: 1.15
+  payment_method:
+    cash: 0.45
+    ewallet: 0.40
+    bank_transfer: 0.15
+  order_status:
+    completed: 0.85
+    cancelled: 0.08
+    failed: 0.07
+  cancelled_reason_code:
+    no_longer_needed: 0.30
+    wrong_address: 0.20
+    restaurant_out_of_stock: 0.20
+    driver_unavailable: 0.15
+    long_wait: 0.10
+    other: 0.05
+  rating_review:
+    1: 0.05
+    2: 0.05
+    3: 0.10
+    4: 0.25
+    5: 0.55
+
+quantity:
+  normal: {range: [1, 2],  weight: 0.80}
+  medium: {range: [3, 5],  weight: 0.17}
+  bulk:
+    range: [13, 25]
+    weight: 0.03
+    only_categories: ["Com", "Bun - Pho", "Tra sua"]
+    only_hours: [11, 12, 13]
+    weekday_only: true
+
+schema_evolution:
+  table: menu_item
+  new_column: spice_level
+  v2_start_date: "2026-04-20"
+  v2_value_range: [0, 4]
+  applies_to_categories: ["Com", "Bun - Pho", "Lau - Nuong", "Do an nhanh"]
+
+defects:
+  offline_duplicate_rate: 0.02
+  amount_mismatch_rate: 0.003
+  review_restaurant_mismatch: 0.005
+  invalid_phone_rate: 0.01
+  null_email_rate: 0.03
+
+delivery:
+  prep_time_minutes: [10, 45]
+  travel_minutes_per_km: 3.5
+  distance_km_range: [0.8, 12.0]
+  actual_vs_estimated_noise: [-5, 25]
+  peak_hour_penalty_minutes: 8
+
+streaming:
+  kafka:
+    bootstrap_servers: "kafka:9092"
+    topics:
+      order: "order-topic"
+      gps: "gps-topic"
+  gps_ping_interval_seconds: 30
+  avg_delivery_minutes: 18
+  gps_noise_degrees: 0.0002
+  event_types: ["PICKED_UP", "EN_ROUTE", "DELIVERED"]
+  burst:
+    enabled: true
+    peak_hours: [11, 12, 13, 18, 19, 20]
+    multiplier: 4.0
+    base_events_per_second: 50
+  late_arrival:
+    enabled: true
+    rate: 0.08
+    delay_seconds: [30, 420]
+  duplicate:
+    enabled: true
+    rate: 0.015
+  # Tốc độ tua nhanh thời gian: 1 giây thực tế = bao nhiêu giây mô phỏng.
+  # Để 60 nghĩa là chạy 1 phút thực sinh ra lượng sự kiện của 1 giờ.
+  time_acceleration: 60
+  # Toạ độ trung tâm từng thành phố, dùng làm gốc để sinh GPS ping.
+  city_centers:
+    "Ho Chi Minh": [10.7769, 106.7009]
+    "Ha Noi": [21.0278, 105.8342]
+    "Da Nang": [16.0544, 108.2022]
+    "Hai Phong": [20.8449, 106.6881]
+    "Can Tho": [10.0452, 105.7469]
+    "Bien Hoa": [10.9574, 106.8426]
+    "Nha Trang": [12.2388, 109.1967]
+    "Hue": [16.4637, 107.5909]
+  # Bán kính tối đa quanh tâm thành phố khi đặt điểm đầu và cuối, tính bằng độ.
+  city_radius_degrees: 0.08
+
+sinks:
+  minio:
+    endpoint: "http://minio:9000"
+    bucket: "raw"
+    format: "parquet"
+    compression: "snappy"
+    partition_by: ["ingested_date"]
+    tables: ["menu_item", "order", "order_item", "review"]
+  postgres:
+    host: "postgres"
+    database: "warehouse"
+    schema: "source_system"
+    tables: ["customer", "restaurant", "driver"]
